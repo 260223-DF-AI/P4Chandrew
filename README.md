@@ -7,6 +7,12 @@
 **Project Title:**  
 *ResearchFlow* — An Adaptive Multi-Agent Research Assistant
 
+**Project Description**
+“The Psychology of Misinformation and Belief Formation”
+- Ties into cognitive biases like confirmation bias
+- Great for multi-source reasoning and contradiction handling
+- Strong use of fact-checking agent
+
 **Team Size:** 2 developers  
 **Estimated Effort:** 30 hours  
 **Delivery Format:** GitHub repository with documentation, working codebase, recorded demo, and formal presentation
