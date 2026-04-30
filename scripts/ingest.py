@@ -12,6 +12,7 @@ import argparse
 import os
 
 from dotenv import load_dotenv
+from langchain_community.document_loaders import PyPDFLoader
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,12 +38,21 @@ def load_documents(input_dir: str) -> list:
     Load and return raw documents from the input directory.
 
     TODO:
-    - Support PDF files (e.g., using pypdf or LangChain's PyPDFLoader).
-    - Support plain text files.
+    x Support PDF files (e.g., using pypdf or LangChain's PyPDFLoader).
+    x Support plain text files.
     - Return a list of Document objects with content and metadata
       (source filename, page number).
     """
-    raise NotImplementedError
+    if input_dir.endswith(".pdf"):
+        loader = PyPDFLoader(input_dir)
+        return loader.load()
+    elif input_dir.endswith(".txt"):
+        with open(input_dir, "r", encoding="utf-8") as f:
+            content = f.read()
+        return [{"content": content, "metadata": {"source": input_dir}}]
+    else:
+        # temp. for now unless we only want to support .pdf and .txt
+        raise ValueError("Unsupported file type. Please provide a .pdf or .txt file.")
 
 
 def chunk_documents(documents: list) -> list:
