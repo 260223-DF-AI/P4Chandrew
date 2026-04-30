@@ -110,11 +110,13 @@ def generate_embeddings(chunks: list) -> tuple:
     
     texts = [chunk.page_content for chunk in chunks]
     prepared_data = []
+
+    # loop through the text in chunks, embedding them in batches
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
-        #text = [chunk for chunk in batch]
         batch_embeddings = embeddings_model.embed_documents(batch)
 
+        # set the metadata for each embedding
         for j, vector in enumerate(batch_embeddings):
             prepared_data.append({
                     'id': str(uuid.uuid4()),
@@ -129,8 +131,7 @@ def generate_embeddings(chunks: list) -> tuple:
 
         embeddings_list.extend(batch_embeddings)
 
-        
-
+    # return prepared_data dictionary, which has 'values' as the key for embeddings
     return prepared_data
 def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
     """
@@ -155,14 +156,6 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
         )
         
     index = pinecone.Index(name=index_name)
-    #ids = [embedding for embedding in embeddings]
-    #vector_store = PineconeVectorStore(index=index, embedding=embeddings)
-    # upsert_data = []
-    # for i, vector in enumerate(embeddings):
-    #     upsert_data.append({
-    #         "id": str(uuid.uuid4()), # Generate a unique ID
-    #         "values": vector
-    #     })
 
     batch_size = 100
     for i in range(0, len(embeddings), batch_size):
