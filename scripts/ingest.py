@@ -14,6 +14,7 @@ import os
 from dotenv import load_dotenv
 from pypdf import PdfReader
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
 def _pdf_reader(file_path: str):
     """Load a PDF file yielding content of a page w/ page number attached."""
     reader = PdfReader(file_path)
@@ -43,17 +45,18 @@ def _pdf_reader(file_path: str):
         text = [line for line in extract.split("\n") if len(line.strip()) > 0] 
         yield (page_num, "\n".join(text))
 
+
 def load_documents(input_dir: str) -> list:
     """
     Load and return raw documents from the input directory.
 
     TODO:
-    x Support PDF files (e.g., using pypdf or LangChain's PyPDFLoader).
-    x Support plain text files.
-    x Return a list of Document objects with content and metadata
+    - Support PDF files (e.g., using pypdf or LangChain's PyPDFLoader).
+    - Support plain text files.
+    - Return a list of Document objects with content and metadata
       (source filename, page number).
     """
-    documents : list[Document] = []
+    documents: list[Document] = []
 
     # returned source is just the file path and not just the file name
     if input_dir.endswith(".pdf"):
@@ -74,7 +77,13 @@ def load_documents(input_dir: str) -> list:
     return documents
 
 
-def chunk_documents(documents: list) -> list:
+def _add_document_metadata(doc, new_metadata):
+    old_metadata = doc.metadata
+    new_metadata = {**old_metadata, **new_metadata}
+    return Document(page_content=doc.page_content, metadata=new_metadata)
+
+
+def chunk_documents(documents: list[Document]) -> list:
     """
     Split documents into smaller chunks for embedding.
 
@@ -82,7 +91,22 @@ def chunk_documents(documents: list) -> list:
     - Use RecursiveCharacterTextSplitter or sentence-level splitting.
     - Attach chunk metadata (chunk_id, source, page_number, timestamp).
     """
-    raise NotImplementedError
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    chunks: list[dict] = []
+
+    for document in documents:
+        split_text = splitter.split_documents([document])
+        for num, chunk in enumerate(split_text):
+            chunks.append(
+                {
+                    "_id": str(chunk_id),
+                    "chunk_text": chunk.page_content,
+                    **_add_document_metadata(chunk, {"chunk_num": num}).metadata,
+                }
+            )
+            chunk_id += 1
+
+    return chunks
 
 
 def generate_embeddings(chunks: list) -> list:
