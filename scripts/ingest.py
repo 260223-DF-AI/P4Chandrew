@@ -54,16 +54,24 @@ def load_documents(input_dir: str) -> list:
       (source filename, page number).
     """
     documents : list[Document] = []
+
+    # returned source is just the file path and not just the file name
     if input_dir.endswith(".pdf"):
-        loader = PyPDFLoader(input_dir)
-        return loader.load()
+        for page_num, text in _pdf_reader(input_dir):
+            content = Document(page_content=text, metadata={"source": input_dir, "page": page_num})
+            documents.append(content)
+    
     elif input_dir.endswith(".txt"):
-        with open(input_dir, "r", encoding="utf-8") as f:
-            content = f.read()
-        return [{"content": content, "metadata": {"source": input_dir}}]
+        with open(input_dir, "r") as f:
+            text = f.read()
+            content = Document(page_content=text, metadata={"source": input_dir, "page": 0})
+            documents.append(content)
+
+    # temp. for now unless we only want to support .pdf and .txt
     else:
-        # temp. for now unless we only want to support .pdf and .txt
         raise ValueError("Unsupported file type. Please provide a .pdf or .txt file.")
+    
+    return documents
 
 
 def chunk_documents(documents: list) -> list:
@@ -74,7 +82,7 @@ def chunk_documents(documents: list) -> list:
     - Use RecursiveCharacterTextSplitter or sentence-level splitting.
     - Attach chunk metadata (chunk_id, source, page_number, timestamp).
     """
-    
+    raise NotImplementedError
 
 
 def generate_embeddings(chunks: list) -> list:
