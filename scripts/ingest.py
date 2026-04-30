@@ -12,7 +12,8 @@ import argparse
 import os
 
 from dotenv import load_dotenv
-from langchain_community.document_loaders import PyPDFLoader
+from pypdf import PdfReader
+from langchain_core.documents import Document
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,6 +33,15 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+def _pdf_reader(file_path: str):
+    """Load a PDF file yielding content of a page w/ page number attached."""
+    reader = PdfReader(file_path)
+
+    for page_num, page in enumerate(reader.pages):
+        extract = page.extract_text()
+
+        text = [line for line in extract.split("\n") if len(line.strip()) > 0] 
+        yield (page_num, "\n".join(text))
 
 def load_documents(input_dir: str) -> list:
     """
@@ -40,9 +50,10 @@ def load_documents(input_dir: str) -> list:
     TODO:
     x Support PDF files (e.g., using pypdf or LangChain's PyPDFLoader).
     x Support plain text files.
-    - Return a list of Document objects with content and metadata
+    x Return a list of Document objects with content and metadata
       (source filename, page number).
     """
+    documents : list[Document] = []
     if input_dir.endswith(".pdf"):
         loader = PyPDFLoader(input_dir)
         return loader.load()
@@ -63,7 +74,7 @@ def chunk_documents(documents: list) -> list:
     - Use RecursiveCharacterTextSplitter or sentence-level splitting.
     - Attach chunk metadata (chunk_id, source, page_number, timestamp).
     """
-    raise NotImplementedError
+    
 
 
 def generate_embeddings(chunks: list) -> list:
