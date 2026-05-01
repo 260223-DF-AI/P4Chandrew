@@ -37,7 +37,8 @@ def planner_node(state: ResearchState) -> dict:
     """
     
     # bedrock will analyze and plan based on the question
-    prompt = f"""You are a D&D 5e assistant. Decompose this question into a simple list of research tasks:
+    prompt = f"""You are a D&D 5e assistant. Decompose this question into a simple list of research tasks.
+                Each task must start with one of these keywords: 'Retrieve', 'Analyze', or 'Fact-check'.
     Question: {state['question']}
     
     Return each task on a new line."""
