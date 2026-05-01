@@ -12,12 +12,12 @@ import argparse
 import os
 import uuid
 import time
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_unstructured import UnstructuredLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_pinecone import PineconeVectorStore
+from langchain_core.documents import Document
 from langchain_aws import BedrockEmbeddings
 from pinecone import Pinecone, ServerlessSpec
+from pypdf import PdfReader
 from dotenv import load_dotenv
 
 
@@ -39,6 +39,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _pdf_reader(file_path: str):
+    """Load a PDF file yielding content of a page w/ page number attached."""
+    reader = PdfReader(file_path)
+
+    for page_num, page in enumerate(reader.pages):
+        extract = page.extract_text()
+
+        text = [line for line in extract.split("\n") if len(line.strip()) > 0] 
+        yield (page_num, "\n".join(text))
+
+
 def load_documents(input_dir: str) -> list:
     """
     Load and return raw documents from the input directory.
@@ -49,24 +60,34 @@ def load_documents(input_dir: str) -> list:
     - Return a list of Document objects with content and metadata
       (source filename, page number).
     """
-    documents = []
+    documents: list[Document] = []
+
+    # returned source is just the file path and not just the file name
+    if input_dir.endswith(".pdf"):
+        for page_num, text in _pdf_reader(input_dir):
+            content = Document(page_content=text, metadata={"source": input_dir, "page": page_num})
+            documents.append(content)
     
-    for filename in os.listdir(input_dir):
-        file_path = os.path.join(input_dir, filename)
-        
-        if filename.endswith('.pdf'):
-            loader = PyPDFLoader(file_path, extract_images=False)
-            pages = loader.load()
-            
-            for page in pages:
-                page.metadata['filename'] = filename
-                page.metadata['category'] = 'DnD'
-            
-            documents.extend(pages)
-            
+    elif input_dir.endswith(".txt"):
+        with open(input_dir, "r") as f:
+            text = f.read()
+            content = Document(page_content=text, metadata={"source": input_dir, "page": 0})
+            documents.append(content)
+
+    # temp. for now unless we only want to support .pdf and .txt
+    else:
+        raise ValueError("Unsupported file type. Please provide a .pdf or .txt file.")
+    
     return documents
 
-def chunk_documents(documents: list) -> list:
+
+def _add_document_metadata(doc, new_metadata):
+    old_metadata = doc.metadata
+    new_metadata = {**old_metadata, **new_metadata}
+    return Document(page_content=doc.page_content, metadata=new_metadata)
+
+
+def chunk_documents(documents: list[Document]) -> list:
     """
     Split documents into smaller chunks for embedding.
 
@@ -74,20 +95,27 @@ def chunk_documents(documents: list) -> list:
     - Use RecursiveCharacterTextSplitter or sentence-level splitting.
     - Attach chunk metadata (chunk_id, source, page_number, timestamp).
     """
-
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=3000,
         chunk_overlap=150,
         separators=['\n\n','\n', '. ', ' ', '']
     )
-    chunks = splitter.split_documents(documents)
+    chunks: list[dict] = []
 
-    for i, chunk in enumerate(chunks):
-        chunk.metadata["chunk_id"] = f"{chunk.metadata.get('source')}_{i}"
-        chunk.metadata["timestamp"] = time.time()
-        # source and page_number are usually carried over from the loader
-        
+    for document in documents:
+        split_text = splitter.split_documents([document])
+        for num, chunk in enumerate(split_text):
+            chunks.append(
+                {
+                    "_id": str(chunk_id),
+                    "chunk_text": chunk.page_content,
+                    **_add_document_metadata(chunk, {"chunk_num": num}).metadata,
+                }
+            )
+            chunk_id += 1
+
     return chunks
+    
 
 def generate_embeddings(chunks: list) -> tuple:
     """
@@ -133,6 +161,8 @@ def generate_embeddings(chunks: list) -> tuple:
 
     # return prepared_data dictionary, which has 'values' as the key for embeddings
     return prepared_data
+
+
 def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
     """
     Upsert embedding vectors and metadata into the Pinecone index.
