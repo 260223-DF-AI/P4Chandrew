@@ -14,11 +14,13 @@ import uuid
 import time
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_unstructured import UnstructuredLoader
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_pinecone import PineconeVectorStore
 from langchain_aws import BedrockEmbeddings
 from pinecone import Pinecone, ServerlessSpec
 from dotenv import load_dotenv
+import re
 
 
 def parse_args() -> argparse.Namespace:
@@ -74,6 +76,9 @@ def chunk_documents(documents: list) -> list:
     - Use RecursiveCharacterTextSplitter or sentence-level splitting.
     - Attach chunk metadata (chunk_id, source, page_number, timestamp).
     """
+    for doc in documents:
+    # This replaces single \n with a space, but keeps \n\n (paragraphs) intact
+        doc.page_content = re.sub(r'(?<!\n)\n(?!\n)', ' ', doc.page_content)
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=3000,
@@ -83,7 +88,7 @@ def chunk_documents(documents: list) -> list:
     chunks = splitter.split_documents(documents)
 
     for i, chunk in enumerate(chunks):
-        chunk.metadata["chunk_id"] = f"{chunk.metadata.get('source')}_{i}"
+        chunk.metadata["id"] = f"{chunk.metadata.get('source')}_{i}"
         chunk.metadata["timestamp"] = time.time()
         # source and page_number are usually carried over from the loader
         
@@ -100,11 +105,12 @@ def generate_embeddings(chunks: list) -> tuple:
     """
     embeddings_model = BedrockEmbeddings(
     model_id= 'amazon.titan-embed-text-v2:0',
-    region_name= 'us-east-1',
+    region_name= os.getenv('AWS_REGION', 'us-east-1'),
     aws_access_key_id= os.getenv('AWS_ACCESS_KEY_ID'),
     aws_secret_access_key= os.getenv('AWS_SECRET_ACCESS_KEY'),
     model_kwargs={"dimensions": 1024} 
-)
+    )
+
     batch_size = 150
     embeddings_list = []
     
@@ -141,6 +147,16 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
     - Initialize the Pinecone client using env vars.
     - Upsert vectors with rich metadata into the specified namespace.
     """
+
+    embeddings_model = BedrockEmbeddings(
+    model_id= 'amazon.titan-embed-text-v2:0',
+    region_name= os.getenv('AWS_REGION', 'us-east-1'),
+    aws_access_key_id= os.getenv('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key= os.getenv('AWS_SECRET_ACCESS_KEY'),
+    model_kwargs={"dimensions": 1024} 
+    )
+
+
     pinecone = Pinecone(
         api_key= os.getenv('PINECONE_API_KEY')
     )
@@ -148,19 +164,50 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
     index_name = os.getenv('PINECONE_INDEX_NAME')
     
     if not pinecone.has_index(index_name):
-        pinecone.create_index(
-            name= index_name,
-            dimension= 1024,
-            metric= 'cosine',
-            spec=ServerlessSpec(cloud='aws', region='us-east-1')
-        )
+        # pinecone.create_index(
+        #     name= index_name,
+        #     dimension= 1024,
+        #     metric= 'cosine',
+        #     spec=ServerlessSpec(cloud='aws', region='us-east-1'),
+        #     embed={
+        #         "model": "llama-text-embed-v2", 
+        #         "field_map": {"text": "text"} 
+        #     }
+        # )
+        # this packs a llama model into the index, so we can search by text
+        pinecone.create_index_for_model(
+        name=index_name,
+        cloud="aws",
+        region=os.getenv('AWS_REGION', 'us-east-1'),
+        embed={
+            "model": "llama-text-embed-v2",
+            "field_map": {"text": "text"} # "Look in metadata['text'] for the searchable content"
+        }
+)
         
+    vectorstore = PineconeVectorStore(index_name=os.getenv("PINECONE_INDEX_NAME"), 
+                                      embedding=embeddings_model,
+                                      namespace=namespace)
+    
     index = pinecone.Index(name=index_name)
 
     batch_size = 100
     for i in range(0, len(embeddings), batch_size):
         batch = embeddings[i : i + batch_size]
-        index.upsert(vectors=batch, namespace=namespace)
+        
+        docs = []
+        for item in batch:
+            # 1. Extract the text from the nested metadata
+            # Adjust the keys if your structure is slightly different
+            metadata_dict = item.get("metadata", {})
+            page_content = metadata_dict.get("text", "")
+            
+            # 2. Create the Document
+            # We pass the whole 'item' or just the 'metadata' dict as metadata
+            docs.append(Document(page_content=page_content, metadata=metadata_dict))
+        
+        # 3. Add the batch to Pinecone via LangChain
+        vectorstore.add_documents(docs, namespace=namespace)
 
 
 def main() -> None:
