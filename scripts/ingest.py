@@ -148,6 +148,7 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
     - Upsert vectors with rich metadata into the specified namespace.
     """
 
+    # Get embeddings set up
     embeddings_model = BedrockEmbeddings(
     model_id= 'amazon.titan-embed-text-v2:0',
     region_name= os.getenv('AWS_REGION', 'us-east-1'),
@@ -156,25 +157,17 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
     model_kwargs={"dimensions": 1024} 
     )
 
-
+    # Create Pinecone object with API key
     pinecone = Pinecone(
         api_key= os.getenv('PINECONE_API_KEY')
     )
     
+    # Establish index
     index_name = os.getenv('PINECONE_INDEX_NAME')
     
+    # If index doesn't exist, create it
+    # Make sure the embedding model is set up to allow text search in Pinecone dashboard
     if not pinecone.has_index(index_name):
-        # pinecone.create_index(
-        #     name= index_name,
-        #     dimension= 1024,
-        #     metric= 'cosine',
-        #     spec=ServerlessSpec(cloud='aws', region='us-east-1'),
-        #     embed={
-        #         "model": "llama-text-embed-v2", 
-        #         "field_map": {"text": "text"} 
-        #     }
-        # )
-        # this packs a llama model into the index, so we can search by text
         pinecone.create_index_for_model(
         name=index_name,
         cloud="aws",
@@ -184,7 +177,7 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
             "field_map": {"text": "text"} # "Look in metadata['text'] for the searchable content"
         }
 )
-        
+    # Initialize the vectorstore
     vectorstore = PineconeVectorStore(index_name=os.getenv("PINECONE_INDEX_NAME"), 
                                       embedding=embeddings_model,
                                       namespace=namespace)

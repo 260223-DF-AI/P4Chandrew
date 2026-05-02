@@ -16,7 +16,6 @@ from agents.retriever import retriever_node
 from agents.analyst import analyst_node
 from agents.fact_checker import fact_checker_node
 import os
-import operator
 
 load_dotenv()
     
@@ -67,15 +66,22 @@ def router(state: ResearchState) -> str:
     - Return the node name as a string (used by add_conditional_edges).
     """
     
-    # Conditional edge: decide which agent to invoke next
-    if not state.get("plan"):
+    # 1. If there are still tasks in the plan, keep retrieving
+    if state.get("plan"):
+        current_task = state["plan"][0].lower()
+        if any(k in current_task for k in ["find", "search", "retrieve", "lookup"]):
+            return "retriever"
+        return "analyst"
+
+    # 2. If the plan is empty but we haven't written the analysis yet, go to Analyst
+    if not state.get("analysis"):
+        return "analyst"
+
+    # 3. If we have an analysis but no fact check report, go to Fact-Checker
+    if not state.get("fact_check_report"):
         return "fact_checker"
-    
-    # Check the first task in the list
-    current_task = state["plan"][0].lower()
-    
-    if any(k in current_task for k in ["find", "search", "retrieve", "lookup"]):
-        return "retriever"
+
+    # 4. Default fallback (usually back to analyst or planner for refinement)
     return "analyst"
     
 
