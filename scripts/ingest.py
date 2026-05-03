@@ -124,10 +124,13 @@ def generate_embeddings(chunks: list) -> tuple:
 
         # set the metadata for each embedding
         for j, vector in enumerate(batch_embeddings):
+            file_name_only = os.path.basename(chunks[j].metadata['source'])
+            
             prepared_data.append({
                     'id': str(uuid.uuid4()),
                     'values': vector,
                     'metadata': {
+                        'source': file_name_only,
                         'text': batch[j],
                         'page': chunks[j].metadata['page'],
                         'category': chunks[j].metadata['category'],
@@ -208,17 +211,19 @@ def main() -> None:
     load_dotenv()
     args = parse_args()
     print("cli parsed")
+    
     documents = load_documents(args.input_dir)
     print('documents loaded:', len(documents))
+    
     chunks = chunk_documents(documents)
-    # for doc_chunk in chunks:
-    #     print(f'***{doc_chunk.metadata['page']}***: {doc_chunk.page_content}')
-    #     print()
     print('chunks generated:', len(chunks))
+    
     embeddings = generate_embeddings(chunks)
     print('embeddings generated')
+    
     upsert_to_pinecone(embeddings, args.namespace)
     print('embeddings upserted')
+    
     print(f"✅ Ingested {len(chunks)} chunks into namespace '{args.namespace}'.")
 
 

@@ -15,6 +15,8 @@ from agents.state import ResearchState
 from agents.retriever import retriever_node
 from agents.analyst import analyst_node
 from agents.fact_checker import fact_checker_node
+from middleware import pii_masking
+from middleware import guardrails
 import os
 
 load_dotenv()
@@ -41,18 +43,25 @@ def planner_node(state: ResearchState) -> dict:
     
     Return each task on a new line."""
     
-    response = llm.invoke(prompt)
+    cleaned_prompt, prompt_redactions = pii_masking.mask_pii(prompt)
+    sanitized_cleaned_prompt = guardrails.sanitize_prompt(cleaned_prompt)
+    response = llm.invoke(sanitized_cleaned_prompt)
+    cleaned_response, response_redactions = pii_masking.mask_pii(response.content)
     
+    total_redactions = prompt_redactions + response_redactions
+    # Make a log for the scratchpad with the number of redactions
+    pii_log = f"Total Redactions: {total_redactions}\nPrompt Redactions: {prompt_redactions}\nResponse Redactions: {response_redactions}"
+
     # Split the response into a list of tasks
     # 'if t.strip()' at the end makes sure that empty strings are not added
-    tasks = [t.strip() for t in response.content.split('\n') if t.strip()]
+    tasks = [t.strip() for t in cleaned_response.split('\n') if t.strip()]
     
-    # Manual update for state.py types
-    new_scratchpad = state.get("scratchpad", []) + [f"Planner: Identified {len(tasks)} tasks."]
+    # Combine log with the task list
+    new_logs = [pii_log, f"Planner: Identified {len(tasks)} tasks."]
     
     return {
         "plan": tasks,
-        "scratchpad": new_scratchpad,
+        "scratchpad": state.get("scratchpad", []) + new_logs,
         "iteration_count": state.get("iteration_count", 0) + 1
     }
 
@@ -100,7 +109,7 @@ def critique_node(state: ResearchState) -> dict:
     
     # Evaluate response and decide: accept, retry, or escalate
     MAX_ITERATIONS = 3
-    HITL_THRESHOLD = 0.5
+    HITL_THRESHOLD = 0.7
     
     score = state.get("confidence_score", 0.0)
     iterations = state.get("iteration_count", 0)

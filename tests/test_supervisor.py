@@ -5,7 +5,8 @@ Tests the routing logic and conditional edges using mocked sub-agents.
 """
 
 from unittest.mock import patch, MagicMock
-from ..agents.supervisor import planner_node
+from agents.supervisor import planner_node
+from agents.state import ResearchState
 import pytest
 
 

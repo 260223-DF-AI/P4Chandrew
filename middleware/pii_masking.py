@@ -16,7 +16,7 @@ PII_PATTERNS: dict[str, str] = {
 }
 
 
-def mask_pii(text: str) -> str:
+def mask_pii(text: str) -> tuple[str, int]:
     """
     Replace detected PII patterns with redaction placeholders.
 
@@ -25,4 +25,13 @@ def mask_pii(text: str) -> str:
     - Return the sanitized text.
     - Consider logging redaction counts to the scratchpad.
     """
-    raise NotImplementedError
+    sanitized = text
+    total_redactions = 0
+    for label, pattern in PII_PATTERNS.items():
+        # Find all matches to count them
+        matches = re.findall(pattern, sanitized)
+        total_redactions += len(matches)
+        sanitized = re.sub(pattern, f"[{label.upper()}_REDACTED]", sanitized)
+        
+    return sanitized, total_redactions
+
