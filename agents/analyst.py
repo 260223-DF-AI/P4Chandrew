@@ -70,6 +70,7 @@ def analyst_node(state: ResearchState) -> dict:
         context_str = "\n".join(formatted_chunks)
     
     # Build the system and user prompt
+    "TODO: Needs updating.This prompt isn't forcing the LLM to return with all the required keys. (Citations/Confidence)"
     system_prompt = (
     "You are an expert D&D 5e Rules Analyst. You MUST return a valid JSON object.\n"
     "CRITICAL: Do NOT omit any fields. If you have no citations, return an empty list [].\n\n"
@@ -100,6 +101,7 @@ def analyst_node(state: ResearchState) -> dict:
     sanitized_prompt = guardrails.sanitize_input(cleaned_prompt)
     
     # Invoke LLM with structured output using the pydantic model
+    "TODO: Add Citation Pydantic Model to verify citations are valid."
     llm = ChatBedrock(
         model_id=os.getenv('BEDROCK_MODEL_ID'),
         model_kwargs={'temperature': 0}
