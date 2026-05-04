@@ -34,3 +34,4 @@ class ResearchState(TypedDict):
     iteration_count: int
     scratchpad: list[str]
     user_id: str
+    critique: str

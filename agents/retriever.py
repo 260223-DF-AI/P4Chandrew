@@ -84,7 +84,7 @@ def retriever_node(state: ResearchState) -> dict:
     else:
         target_ns = "primary-corpus"
         
-    current_subtask = current_subtask.replace("Retrieve", "").replace("Analyze", "").strip()
+    current_subtask = current_subtask.replace("Retrieve", "").replace("Analyze", "").replace("Fact-check", "").strip()
     print(f"\n---Query: {current_subtask}---\n")
     
     # Query the Pinecone index, apply compression, and re-rank with fresh configurations targeting the correct namespace

@@ -41,5 +41,5 @@ def fact_checker_node(state: ResearchState) -> dict:
             "status": "Accepted", 
             "details": "Fact-check skipped for testing."
         },
-        "scratchpad": state.get("scratchpad", []) + ["Fact-Checker: Bypass (Mock) triggered."]
+        "scratchpad": state.get("scratchpad", []) + ["Fact-Checker: Bypassed. Not implemented."]
     }
