@@ -7,9 +7,6 @@ using the LangGraph Store interface with namespaces and scopes.
 from langgraph.store.memory import InMemoryStore
 
 
-# Module-level singleton — one Store across the whole process.
-# In Lambda you would swap this for PostgresStore so memory survives
-# between invocations.
 _store = InMemoryStore()
 
 DEFAULT_PREFERENCES = {
@@ -50,7 +47,10 @@ def get_query_history(user_id: str, limit: int = 5) -> list[str]:
     - Read from the Store under a "history" scope.
     - Return the most recent `limit` queries.
     """
-    raise NotImplementedError
+    item = _store.get(("users", user_id, "history"), "queries")
+    if not item:
+        return []
+    return item.value[-limit:]
 
 
 def append_query(user_id: str, question: str) -> None:
@@ -60,4 +60,8 @@ def append_query(user_id: str, question: str) -> None:
     TODO:
     - Write the new query to the Store.
     """
-    raise NotImplementedError
+    namespace = ("users", user_id, "history")
+    item = _store.get(namespace, "queries")
+    history = item.value if item else []
+    history.append(question)
+    _store.put(namespace, "queries", history)
