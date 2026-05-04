@@ -49,10 +49,10 @@ vectorstore = PineconeVectorStore(index_name=os.getenv("PINECONE_INDEX_NAME"),
                                     embedding=embeddings_model,
                                     namespace='primary-corpus')
 
-# Use Cohere to rerank
-compressor = CohereRerank(model="rerank-english-v3.0")
+base_retriever = vectorstore.as_retriever(search_kwargs={"k": 20})
 
-base_retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+# Use Cohere to rerank
+compressor = CohereRerank(model="rerank-english-v3.0", top_n=10)
 compression_retriever = ContextualCompressionRetriever(
 base_compressor=compressor, 
 base_retriever=base_retriever
@@ -78,18 +78,18 @@ def retriever_node(state: ResearchState) -> dict:
     current_plan = state.get("plan", [])
     # If planner hasn't run yet, use the question as the subtask
     current_subtask = current_plan[0] if current_plan else state["question"]
-    
     # If the current subtask is a fact check, use the fact check corpus
     if current_subtask.lower().startswith("fact-check"):
         target_ns = "fact-check-sources"
     else:
         target_ns = "primary-corpus"
         
-    # Set the target namespace for the retriever (primary-corpus or fact-check-sources)
-    compression_retriever.base_retriever.search_kwargs["namespace"] = target_ns
+    current_subtask = current_subtask.replace("Retrieve", "").replace("Analyze", "").strip()
+    print(f"\n---Query: {current_subtask}---\n")
     
-    # Query the Pinecone index
-    docs = compression_retriever.invoke(current_subtask)
+    # Query the Pinecone index, apply compression, and re-rank with fresh configurations targeting the correct namespace
+    docs = compression_retriever.invoke(current_subtask,
+                                        config={"configurable": {"search_kwargs": {"namespace": target_ns}}})
 
     formatted_chunks = []
     for doc in docs:
@@ -105,13 +105,14 @@ def retriever_node(state: ResearchState) -> dict:
     log_entry = f"Retriever Agent: Searched for '{current_subtask}' and found {len(formatted_chunks)} relevant chunks."
     
     # Pop off the current task, so the planner can continue with the next task
-    remaining_plan = state.get("plan", [])
-    if remaining_plan:
-        remaining_plan.pop(0) 
+    # Analyst.py will take care of the popping
+    # remaining_plan = state.get("plan", [])
+    # if remaining_plan:
+    #     remaining_plan.pop(0) 
         
     # Return the keys that need updating in the shared state
     return {
-        "plan": remaining_plan,
+        #"plan": remaining_plan,
         "retrieved_chunks": formatted_chunks,
         "scratchpad": state.get("scratchpad", []) + [log_entry]
     }

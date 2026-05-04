@@ -34,4 +34,12 @@ def fact_checker_node(state: ResearchState) -> dict:
     - If confidence < threshold, trigger HITL interrupt.
     - Support Time Travel via state checkpointing.
     """
-    raise NotImplementedError
+    
+    # Mock implementation
+    return {
+        "fact_check_report": {
+            "status": "Accepted", 
+            "details": "Fact-check skipped for testing."
+        },
+        "scratchpad": state.get("scratchpad", []) + ["Fact-Checker: Bypass (Mock) triggered."]
+    }
