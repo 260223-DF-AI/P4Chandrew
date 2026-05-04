@@ -1,17 +1,75 @@
 [
   {
-    "question": "REPLACE with a research question relevant to your corpus.",
-    "ground_truth_answer": "REPLACE with the expected correct answer.",
+    "question": "What are Weapon Masteries?",
+    "ground_truth_answer": "A new system allowing martial classes to unlock special properties for weapons (e.g., Cleave, Vex, Slow) to add tactical variety to basic attacks.",
     "ground_truth_contexts": [
-      "REPLACE with the exact passage(s) from your corpus that support the answer."
+      "Each weapon has a mastery property, which is us-able only by a character who has a feature, such as Weapon Mastery, that unlocks the property for the character. The properties are defined below."
     ]
   },
   {
-    "question": "What are the primary differences between X and Y?",
-    "ground_truth_answer": "X differs from Y in three key ways: ...",
+    "question": "What are the six core ability scores?",
+    "ground_truth_answer": "The six core ability scores are Strength, Dexterity, Constitution, Intelligence, Wisdom, and Charisma.",
     "ground_truth_contexts": [
-      "Passage from document A that discusses X...",
-      "Passage from document B that discusses Y..."
+      "All creatures—characters and monsters—have six abilities that measure physical and mental charac-teristics, as shown on the Ability Descriptions table.",
+      "Ability Score Measures ... Strength Physical might Dexterity Agility, reflexes, and balance Constitution Health and stamina Intelligence Reasoning and memory Wisdom Perceptiveness and mental fortitude Charisma Confidence, poise, and charm"
+    ]
+  },
+  {
+    "question": "Which class gains the ability to Rage in combat?",
+    "ground_truth_answer": "The Barbarian class gains the ability to Rage in combat.",
+    "ground_truth_contexts": [
+      "As a Barbarian, you gain the following class features when you reach the specified Barbarian levels. These features are listed in the Barbarian Features table.",
+      "Level 1: Rage You can imbue yourself with a primal power called Rage, a force that grants you extraordinary might and resilience. You can enter it as a Bonus Action if you aren’t wearing Heavy armor."
+    ]
+  },
+  {
+    "question": "What is the maximum number of bonus actions a player can take in a single turn?",
+    "ground_truth_answer": "A player can take only one bonus action per turn.",
+    "ground_truth_contexts": [
+      "You can take only one Bonus Action on your turn, so you must choose which Bonus Action to use if you have more than one available."
+    ]
+  },
+  {
+    "question": "When rolling for initiative, what ability modifier do you add to the roll?",
+    "ground_truth_answer": "You add your Dexterity modifier to your initiative roll.",
+    "ground_truth_contexts": [
+      "Initiative determines the order of turns during combat. When combat starts, every participant rolls Initiative; they make a Dexterity check that determines their place in the Initiative order. The GM rolls for monsters. For a group of identical crea-tures, the GM makes a single roll, so each member of the group has the same Initiative."
+    ]
+  },
+  {
+    "question": "How many death saving throws must you fail to die?",
+    "ground_truth_answer": "You must fail three death saving throws to die.",
+    "ground_truth_contexts": [
+      "Three Successes/Failures. Roll 1d20. If the roll is 10 or higher, you succeed. Otherwise, you fail. A success or failure has no effect by itself. On your third success, you become Stable (see “Stabilizing a Character” below). On your third failure, you die."
+    ]
+  },
+  {
+    "question": "What does AC stand for in the context of a character's protection?",
+    "ground_truth_answer": "AC stands for Armor Class",
+    "ground_truth_contexts": [
+      "A creature’s Armor Class represents how well the creature avoids being wounded in combat. The AC of a character is determined at character creation (see “Character Creation”), whereas the AC of a monster appears in its stat block."
+    ]
+  },
+  {
+    "question": "If an enemy rolls a D20 and gets a 12, and the player's AC is 15, does the attack hit or miss?",
+    "ground_truth_answer": "The attack misses.",
+    "ground_truth_contexts": [
+      "An attack roll determines whether an attack hits a target. An attack roll hits if the roll equals or exceeds the target’s Armor Class. Attack rolls usu-ally occur in battle, described in “Combat” later in “Playing the Game,” but the GM might also ask for an attack roll in other situations, such as an archery competition."
+    ]
+  },
+  {
+    "question": "When in combat, what happens if the player rolls a 1 with a D20 for an attack roll?",
+    "ground_truth_answer": "Rolling a 1 on an attack roll is a critical failure, often resulting in a miss regardless of modifiers.",
+    "ground_truth_contexts": [
+      "If you roll a 20 on the d20 (called a “natural 20”) for an attack roll, the attack hits regardless of any mod-ifiers or the target’s AC. This is called a Critical Hit (see “Combat” later in “Playing the Game”).",
+      "If you roll a 1 on the d20 (a “natural 1”) for an at-tack roll, the attack misses regardless of any modifi-ers or the target’s AC."
+    ]
+  },
+  {
+    "question": "Which spell allows you to put the Charmed condition on a humanoid if they fail a Wisdom saving throw?",
+    "ground_truth_answer": "The spell 'Charm Person' allows you to put the Charmed condition on a humanoid if they fail a Wisdom saving throw.",
+    "ground_truth_contexts": [
+      "Charm PersonLevel 1 Enchantment (Bard, Druid, Sorcerer, Warlock, Wizard)Casting Time: ActionRange: 30 feetComponents: V, SDuration: 1 hourOne Humanoid you can see within range makes a Wisdom saving throw. It does so with Advantage if you or your allies are fighting it. On a failed save, the target has the Charmed condition until the spell ends or until you or your allies damage it. The Charmed creature is Friendly to you. When the spell ends, the target knows it was Charmed by you."
     ]
   }
 ]
