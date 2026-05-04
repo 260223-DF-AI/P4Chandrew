@@ -131,7 +131,7 @@ def generate_embeddings(chunks: list) -> tuple:
                         'text': batch[j],
                         'page': chunks[j].metadata['page'],
                         'category': chunks[j].metadata['category'],
-                        'timestamp': chunks[j].metadata['creationdate'],
+                        'date': chunks[j].metadata['creationdate'],
                 }
             })
 
