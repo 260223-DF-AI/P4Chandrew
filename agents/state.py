@@ -5,7 +5,8 @@ Defines the TypedDict that flows through the Supervisor StateGraph.
 All nodes read from and write to this shared state.
 """
 
-from typing import TypedDict
+from typing import Annotated, TypedDict
+from operator import add
 
 
 class ResearchState(TypedDict):
@@ -32,6 +33,8 @@ class ResearchState(TypedDict):
     fact_check_report: dict
     confidence_score: float
     iteration_count: int
-    scratchpad: list[str]
+    scratchpad: Annotated[list[str], add]
     user_id: str
     critique: str
+    current_subtask_index: int
+    needs_hitl: bool
