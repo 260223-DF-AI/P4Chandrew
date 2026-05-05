@@ -45,7 +45,6 @@ def planner_node(state: ResearchState) -> dict:
         
     if not current_plan:
         
-        #If an analysis has been made, and we are back in this planner method, we need to make a new plan
         if not analysis:
             # If no analysis has been made, this is our first time in the planning loop
             mode_msg = "Initial Planning"
@@ -54,6 +53,7 @@ def planner_node(state: ResearchState) -> dict:
                     Question: {state['question']}
                     Return each task on a new line."""
 
+        #If an analysis has been made, and we are back in this planner method, we need to make a new plan
         else:
             mode_msg = "Plan Refinement"
         
@@ -63,26 +63,19 @@ def planner_node(state: ResearchState) -> dict:
                         Remaining Tasks: {current_plan}
                         Recent Activity: {state.get('scratchpad', [])[-2:]}
                         Provide an updated list of tasks."""
-        
-    # else:
-    #     # If we are here and a plan exists, we just want to log that we are continuing
-    #     return {
-    #         "plan": current_plan,
-    #         "scratchpad": state.get("scratchpad", []) + ["Planner: Continuing with existing plan."]
-    #     }
 
-    
+        # Clean the user prompt and LLM response
         cleaned_prompt, prompt_redactions = pii_masking.mask_pii(prompt)
         sanitized_cleaned_prompt = guardrails.sanitize_input(cleaned_prompt)
         response = llm.invoke(sanitized_cleaned_prompt)
         cleaned_response, response_redactions = pii_masking.mask_pii(response.content)
         
-        total_redactions = prompt_redactions + response_redactions
+
         # Make a log for the scratchpad with the number of redactions
+        total_redactions = prompt_redactions + response_redactions
         pii_log = f"PII Masking ({mode_msg})\nTotal Redactions: {total_redactions}\nPrompt Redactions: {prompt_redactions}\nResponse Redactions: {response_redactions}"
 
-        # Split the response into a list of tasks
-        # 'if t.strip()' at the end makes sure that empty strings are not added
+        # Split the response into a list of tasks. These will go to the other nodes for proceessing
         tasks = [t.strip() for t in cleaned_response.split('\n') if t.strip()]
         
         # Combine log with the task list
@@ -94,6 +87,7 @@ def planner_node(state: ResearchState) -> dict:
             "iteration_count": state.get("iteration_count", 0) + 1
         }
     
+    # If there is a plan and analysis, return current plan and keep going
     return {"plan": state.get("plan", []), "scratchpad": state.get("scratchpad", []) + ["Planner: Proceeding..."]}
 
 
@@ -117,7 +111,7 @@ def router(state: ResearchState) -> str:
         is_retrieval_task = any(k in current_task for k in ["find", "search", "retrieve", "lookup"])
         
         # If it's a retrieval task and we don't have results yet, go get them
-        if not chunks:
+        if not chunks and is_retrieval_task:
             return "retriever"
         
         # Otherwise, the Analyst handles the task (and pops it when done)
@@ -149,13 +143,14 @@ def critique_node(state: ResearchState) -> dict:
     """
     
     # Evaluate response and decide: accept, retry, or escalate
-    MAX_ITERATIONS = 3
-    HITL_THRESHOLD = 0.7
+    MAX_ITERATIONS = float(os.getenv("MAX_REFINEMENT_ITERATIONS", 3))
+    HITL_THRESHOLD = float(os.getenv("HITL_CONFIDENCE_THRESHOLD", 0.7))
     
     score = state.get("confidence_score", 0.0)
     iterations = state.get("iteration_count", 0)
     current_logs = state.get("scratchpad", [])
 
+    #TODO: Make sure the Critique node writes to the newly added critique field in state, instead of scratchpad
     # High Confidence - Finish
     if score >= HITL_THRESHOLD:
         return {

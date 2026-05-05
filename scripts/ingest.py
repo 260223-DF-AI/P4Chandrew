@@ -5,7 +5,8 @@ Reads PDF/text files from an input directory, chunks them,
 generates embeddings, and upserts them into a Pinecone index.
 
 Usage:
-    python scripts/ingest.py --input-dir ./data/corpus --namespace primary-corpus
+    python scripts/ingest.py --input-dir ./data/primary-corpus --namespace primary-corpus
+    python scripts/ingest.py --input-dir ./data/fact-check-sources --namespace fact-check-sources
 """
 
 import argparse
@@ -13,9 +14,9 @@ import os
 import uuid
 import time
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_unstructured import UnstructuredLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_pinecone import PineconeVectorStore
 from langchain_aws import BedrockEmbeddings
 from pinecone import Pinecone, ServerlessSpec
@@ -52,6 +53,12 @@ def load_documents(input_dir: str) -> list:
       (source filename, page number).
     """
     documents = []
+
+    headers_to_split_on = [
+        ("#", "H1"),   # Captures whatever follows # as metadata['H1']
+        ("##", "H2"),  # Captures whatever follows ## as metadata['H2']
+        ("###", "H3")  # Captures whatever follows ### as metadata['H3']
+    ]
     
     for filename in os.listdir(input_dir):
         file_path = os.path.join(input_dir, filename)
@@ -65,7 +72,11 @@ def load_documents(input_dir: str) -> list:
                 page.metadata['category'] = 'DnD'
             
             documents.extend(pages)
-            
+
+        if filename.endswith('.md') and "README" not in filename:
+            #text_splitter = MarkdownHeaderTextSplitter(file_path)
+            pass
+
     return documents
 
 def chunk_documents(documents: list) -> list:
@@ -131,7 +142,7 @@ def generate_embeddings(chunks: list) -> tuple:
                         'text': batch[j],
                         'page': chunks[j].metadata['page'],
                         'category': chunks[j].metadata['category'],
-                        'timestamp': chunks[j].metadata['creationdate'],
+                        'date': chunks[j].metadata['creationdate'],
                 }
             })
 
