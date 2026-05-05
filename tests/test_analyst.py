@@ -9,8 +9,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from agents.analyst import AnalysisResult
-
+from agents.analyst import AnalysisResult, analyst_node
 
 class TestAnalystAgent:
     """Tests for agents.analyst.analyst_node."""
@@ -22,6 +21,11 @@ class TestAnalystAgent:
         - Call analyst_node with sample retrieved_chunks.
         - Assert the output parses into a valid AnalysisResult.
         """
+        response = MagicMock()
+        response.generations = [MagicMock(text="...")]
+        state = MagicMock()["retrieved_chunks"] = response.generations
+        result = analyst_node(state)
+        expected = {}
         pass
 
     def test_includes_citations(self):
