@@ -85,7 +85,13 @@ def run_ragas_evaluation(predictions: list[dict], golden: list[dict]) -> dict:
     - Evaluate with metrics: faithfulness, answer_relevancy, context_precision.
     - Return a dict of metric_name → score.
     """
-    raise NotImplementedError
+    ds = Dataset.from_list(predictions)
+    result = evaluate(
+        ds,
+        metrics=[faithfulness, answer_relevancy, context_precision],
+    )
+    
+    return {k: float(v) for k, v in result._scores_dict.items()}
 
 
 def main() -> None:
