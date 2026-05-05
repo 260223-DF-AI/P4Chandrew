@@ -278,7 +278,7 @@ if __name__ == "__main__":
 
             # Print the synthesis if the Analyst finished
             if "analysis" in output:
-                print(f"Analysis Answer: {output['analysis'].get('answer')[:200]}...")
+                print(f"Analysis Answer: {output['analysis'].get('answer')[:500]}...")
                 
             if node_name == "critique":
                 report = output.get("fact_check_report", {})

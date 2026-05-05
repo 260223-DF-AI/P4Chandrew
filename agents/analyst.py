@@ -64,15 +64,16 @@ def analyst_node(state: ResearchState) -> dict:
             formatted_chunks.append(
                 f"--- DOCUMENT {i} ---\n"
                 f"SOURCE: {c.get('source', 'Unknown')}\n"
-                f"PAGE: {c.get('page_number', 'N/A')}\n"
-                f"TEXT: {c.get('content', '').strip()}\n"
+                f"PAGE NUMBER: {c.get('page_number', 'N/A')}\n"
+                f"TEXT CONTENT: {c.get('content', '').strip()}\n"
             )
         context_str = "\n".join(formatted_chunks)
     
     # Build the system and user prompt
     system_prompt = (
     "You are an expert D&D 5e Rules Analyst. You MUST return a valid JSON object.\n"
-    "CRITICAL: Do NOT omit any fields. If you have no citations, return an empty list [].\n\n"
+    "CRITICAL: Do NOT omit any fields. If you have no citations, return an empty list [].\n"
+    "'excerpt' MUST be a verbatim (word-for-word) quote from the 'TEXT CONTENT' used to answer the question.\n\n"
     "Example of the EXACT required format:\n"
     "{\n"
     '  "answer": "A grappled creature\'s speed becomes 0.",\n'
