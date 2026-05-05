@@ -11,6 +11,12 @@ Usage:
 import argparse
 import json
 
+from datasets import Dataset
+from ragas import evaluate
+from ragas.metrics import faithfulness, answer_relevancy, context_precision
+
+from agents.supervisor import build_supervisor_graph
+
 from dotenv import load_dotenv
 
 
@@ -45,7 +51,29 @@ def generate_predictions(dataset: list[dict]) -> list[dict]:
     - Capture the generated answer and the retrieved contexts.
     - Return a list of dicts with keys: question, answer, contexts.
     """
-    raise NotImplementedError
+    graph = build_supervisor_graph()
+    out = []
+    for i, entry in enumerate(dataset):
+        config = {"configurable": {"thread_id": f"eval-{i}"}}
+        try:
+            result = graph.invoke(
+                {"question": entry["question"], "user_id": "evaluator"},
+                config=config,
+            )
+        except Exception as e:
+            print(f"  [warn] entry {i} failed: {e}")
+            out.append({"question": entry["question"], "answer": "", "contexts": []})
+            continue
+        analysis = result.get("analysis", {}) or {}
+        contexts = [c["content"] for c in result.get("retrieved_chunks", [])]
+        out.append({
+            "question": entry["question"],
+            "answer": analysis.get("answer", ""),
+            "contexts": contexts,
+            "ground_truth": entry["ground_truth_answer"],
+        })
+        print(f"  [{i+1}/{len(dataset)}] done")
+    return out
 
 
 def run_ragas_evaluation(predictions: list[dict], golden: list[dict]) -> dict:
@@ -57,7 +85,13 @@ def run_ragas_evaluation(predictions: list[dict], golden: list[dict]) -> dict:
     - Evaluate with metrics: faithfulness, answer_relevancy, context_precision.
     - Return a dict of metric_name → score.
     """
-    raise NotImplementedError
+    ds = Dataset.from_list(predictions)
+    result = evaluate(
+        ds,
+        metrics=[faithfulness, answer_relevancy, context_precision],
+    )
+    
+    return {k: float(v) for k, v in result._scores_dict.items()}
 
 
 def main() -> None:
