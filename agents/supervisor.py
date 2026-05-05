@@ -40,7 +40,7 @@ def planner_node(state: ResearchState) -> dict:
     
     if analysis and not current_plan and state.get("iteration_count", 0) == 0:
         return {
-            "scratchpad": state.get("scratchpad", []) + ["Planner: Research cycle 1 complete."]
+            "scratchpad": ["Planner: Research cycle 1 complete."]
         }
         
     if not current_plan:
@@ -83,12 +83,12 @@ def planner_node(state: ResearchState) -> dict:
         
         return {
             "plan": tasks,
-            "scratchpad": state.get("scratchpad", []) + new_logs,
+            "scratchpad": new_logs,
             "iteration_count": state.get("iteration_count", 0) + 1
         }
     
     # If there is a plan and analysis, return current plan and keep going
-    return {"plan": state.get("plan", []), "scratchpad": state.get("scratchpad", []) + ["Planner: Proceeding..."]}
+    return {"plan": state.get("plan", []), "scratchpad": ["Planner: Proceeding..."]}
 
 
 def router(state: ResearchState) -> str:
@@ -224,7 +224,7 @@ def build_supervisor_graph() -> CompiledStateGraph:
             "retriever": "retriever",
             "analyst": "analyst",
             "fact_checker": "fact_checker",
-            "critique": "critique", # <--- This is the exit ramp!
+            "critique": "critique",
             "planner": "planner"
         }
     )

@@ -28,7 +28,7 @@ class FactCheckReport(BaseModel):
     """Full verification report across all claims."""
     verdicts: list[ClaimVerdict] = Field(default_factory=list)
     overall_confidence: float = Field(ge=0.0, le=1.0)
-
+    status: str = Field(default="Pending", pattern=r"^(Pending|Accepted|Escalated)$")
 
 _VERDICT_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
@@ -149,9 +149,14 @@ def fact_checker_node(state: ResearchState) -> dict:
     overall = max(0.0, min(1.0, raw))
 
     threshold = float(os.environ.get("HITL_CONFIDENCE_THRESHOLD", 0.6))
-    needs_hitl = overall < threshold or counts["Unsupported"] > 0
+    if counts["Unsupported"] > 0 or overall < threshold:
+        report_status = "Escalated"
+        needs_hitl = True
+    else:
+        report_status = "Accepted"
+        needs_hitl = False
 
-    report = FactCheckReport(verdicts=verdicts, overall_confidence=overall)
+    report = FactCheckReport(verdicts=verdicts, overall_confidence=overall, status=report_status)
     log.append(
         f"[fact_checker] supported={counts['Supported']}, "
         f"unsupported={counts['Unsupported']}, inconclusive={counts['Inconclusive']}, "
