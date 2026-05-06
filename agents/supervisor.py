@@ -157,7 +157,7 @@ def critique_node(state: ResearchState) -> dict:
     if score >= HITL_THRESHOLD:
         return {
             "scratchpad": current_logs + ["Critique: Accepted response."],
-            "fact_check_report": {"status": "Accepted"},
+            "critique": {"status": "Accepted"},
             "retrieved_chunks": state.get("retrieved_chunks", [])
         }
     
@@ -166,14 +166,14 @@ def critique_node(state: ResearchState) -> dict:
         return {
             "iteration_count": iterations + 1, # Explicitly increment state
             "scratchpad": current_logs + [f"Critique: Score {score} too low. Retrying ({iterations + 1}/{MAX_ITERATIONS})."],
-            "fact_check_report": {"status": "Retrying"},
+            "critique": {"status": "Retrying"},
             "retrieved_chunks": state.get("retrieved_chunks", [])
         }
 
     # Max Iterations reached or critically low score - Escalate
     escalated_state = {
         "scratchpad": current_logs + ["Critique: Max iterations reached or threshold failed. Escalating to HITL."],
-        "fact_check_report": {"status": "Escalated"},
+        "critique": {"status": "Escalated"},
         "retrieved_chunks": state.get("retrieved_chunks", [])
     }
     return interrupt(escalated_state)
@@ -240,7 +240,7 @@ def build_supervisor_graph() -> CompiledStateGraph:
     # Final routing from critique
     builder.add_conditional_edges(
         "critique",
-        lambda state: END if state["fact_check_report"].get("status") in ["Accepted", "Escalated"] else "planner"
+        lambda state: END if state["critique"].get("status") in ["Accepted", "Escalated"] else "planner"
     )
 
     return builder.compile()
@@ -264,9 +264,11 @@ if __name__ == "__main__":
     }
 
     print("\n=== STARTING RESEARCH FLOW ===")
-    
+    # Program is crashing due to recursion limit. Change from 25 to 50
+    config={"recursion_limit": 50} 
+
     # Stream the events so you can see the nodes working in real-time
-    for event in app.stream(inputs, stream_mode="updates"):
+    for event in app.stream(inputs, stream_mode="updates", config=config):
         for node_name, output in event.items():
             print(f"\n--- Output from Node: {node_name} ---")
             
@@ -275,18 +277,25 @@ if __name__ == "__main__":
                 print(f"Current Plan: {output['plan']}")
             
             # Print the number of chunks retrieved
-            if "retrieved_chunks" in output:
+            if "retrieved_chunks" in output and node_name == "retriever":
                 print(f"Retrieved {len(output['retrieved_chunks'])} chunks.")
 
             # Print the synthesis if the Analyst finished
             if "analysis" in output:
                 print(f"Analysis Answer: {output['analysis'].get('answer')[:500]}...")
-                
-            if node_name == "critique":
+            
+            if "fact_checker_report" in output:
+                print(f"Fact Check Status: {output['fact_check_report'].get('status')}")
+
+            if node_name == "fact_checker":
                 report = output.get("fact_check_report", {})
+                print(f"Fact Check Status: {report.get('status')}")
+
+            if node_name == "critique":
+                report = output.get("critique", {})
                 print(f"Status: {report.get('status')}")
                 # Ensure your critique node writes to the scratchpad so you see it here
-                for log in output.get("scratchpad", []):
-                    print(f"Log: {log}")
+                # for log in output.get("scratchpad", []):
+                #     print(f"Log: {log}")
 
-    print("\n=== FLOW COMPLETE ===")
+    print("\n=== FLOW COMPcLETE ===")
