@@ -52,6 +52,7 @@ def lambda_handler(event: dict, context) -> dict:
     Expected response: { "statusCode": 200, "body": "<JSON report>" }
     """
     try:
+        # parse and validate input
         raw_body = event.get("body") or "{}"
 
         if isinstance(raw_body, str):
@@ -62,6 +63,35 @@ def lambda_handler(event: dict, context) -> dict:
         question = (body.get("question") or "").strip()
         if not question:
             return _response(400, {"error": "Missing 'question' in request body."})
+        
+        from middleware.pii_masking import mask_pii
+        from middleware.guardrails import sanitize_input, detect_injection
+
+        # check for possible injection patterns before sanitization
+        if detect_injection(question):
+            return _response(400, {"error": "Potential prompt injection detected in input."})
+        question = mask_pii(sanitize_input(question))
+
+        # invoke the Supervisor
+        graph = _get_graph()
+        config = {
+            "configurable": {
+                "thread_id": f"lambda-{uuid.uuid4()}"
+            }
+        }
+        result = graph.invoke({
+            "question": question,
+            "user_id": body.get("user_id", "anonymous")
+        }, config=config)
+
+        analysis = result.get("analysis", {}) or {}
+        return _response(200, {
+            "answer": mask_pii(analysis.get("answer", "")),
+            "citations": analysis.get("citations", []),
+            "confidence": result.get("confidence_score", 0.0),
+            "fact_check": result.get("fact_check_report", {}),
+            "iterations": result.get("iteration_count", 0)
+        })
         
     except Exception as e:
         logger.exception("Research request failed.")
