@@ -13,6 +13,7 @@ import argparse
 import os
 import uuid
 import time
+import re
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -21,7 +22,7 @@ from langchain_pinecone import PineconeVectorStore
 from langchain_aws import BedrockEmbeddings
 from pinecone import Pinecone, ServerlessSpec
 from dotenv import load_dotenv
-import re
+from datetime import datetime
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,28 +55,60 @@ def load_documents(input_dir: str) -> list:
     """
     documents = []
 
+    # Initialize Markdown text splitter
     headers_to_split_on = [
         ("#", "H1"),   # Captures whatever follows # as metadata['H1']
         ("##", "H2"),  # Captures whatever follows ## as metadata['H2']
-        ("###", "H3")  # Captures whatever follows ### as metadata['H3']
+        ("###", "H3"),  # Captures whatever follows ### as metadata['H3']
+        ("####", "H4"),  # Captures whatever follows #### as metadata['H4']
+        ("#####", "H5")  # Captures whatever follows ##### as metadata['H5']
     ]
     
-    for filename in os.listdir(input_dir):
-        file_path = os.path.join(input_dir, filename)
-        
-        if filename.endswith('.pdf'):
-            loader = PyPDFLoader(file_path, extract_images=False)
-            pages = loader.load()
+    # Iterate over files in the input directory
+    for root, dirs, files in os.walk(input_dir):
+        for filename in files:
+            file_path = os.path.join(root, filename)
             
-            for page in pages:
-                page.metadata['filename'] = filename
-                page.metadata['category'] = 'DnD'
+            ctime = os.path.getctime(file_path)
+            creation_date = datetime.fromtimestamp(ctime).strftime('%Y-%m-%d')
             
-            documents.extend(pages)
+            # --- RESEARCH DATA (Markdowns) ---
+            if filename.endswith('.md') and "README" not in filename:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Split and add folder hierarchy metadata
+                md_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+                md_chunks = md_splitter.split_text(content)
 
-        if filename.endswith('.md') and "README" not in filename:
-            #text_splitter = MarkdownHeaderTextSplitter(file_path)
-            pass
+                rel_dir = os.path.relpath(root, input_dir)
+                for chunk in md_chunks:
+                    chunk.metadata.update({
+                        'filename': filename,
+                        'subject': rel_dir if rel_dir != "." else "general",
+                        'category': 'DnD_Research',
+                        'source': file_path,
+                        'creationdate': creation_date,
+                        'timestamp': str(datetime.fromtimestamp(time.time()))
+                    })
+                documents.extend(md_chunks)
+                
+            # --- FACT-CHECK DATA (PDFs) ---
+            elif filename.endswith('.pdf'):
+                loader = PyPDFLoader(file_path, extract_images=False)
+                pages = loader.load()
+                
+                for page in pages:
+                    page.metadata.update({
+                        'filename': filename,
+                        'category': 'DnD_Official_Rules',
+                        'subject': 'Official',
+                        'source': file_path,
+                        'creationdate': creation_date,
+                        'timestamp': str(datetime.fromtimestamp(time.time()))
+                        
+                    })
+                documents.extend(pages)
 
     return documents
 
@@ -87,23 +120,46 @@ def chunk_documents(documents: list) -> list:
     - Use RecursiveCharacterTextSplitter or sentence-level splitting.
     - Attach chunk metadata (chunk_id, source, page_number, timestamp).
     """
+    final_chunks = []
+    
+    pdf_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=4000,
+        chunk_overlap=200,
+        separators=['\n\n', '\n', '. ', ' ', '']
+    )
+
+    md_safety_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=3000, 
+        chunk_overlap=300,
+        separators=['\n\n', '\n', '. ', ' ', '']
+    )
+    
     for doc in documents:
     # This replaces single \n with a space, but keeps \n\n (paragraphs) intact
+    # We do this in case the page changes mid-paragraph and we want to preserve the paragraph
         doc.page_content = re.sub(r'(?<!\n)\n(?!\n)', ' ', doc.page_content)
+        
+        is_markdown = "H1" in doc.metadata or "H2" in doc.metadata
 
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=3000,
-        chunk_overlap=150,
-        separators=['\n\n','\n', '. ', ' ', '']
-    )
-    chunks = splitter.split_documents(documents)
-
-    for i, chunk in enumerate(chunks):
-        chunk.metadata["id"] = f"{chunk.metadata.get('source')}_{i}"
-        chunk.metadata["timestamp"] = time.time()
+        if is_markdown:
+            # If the Markdown section is within a safe size, keep it whole.
+            # If it's massive (over 4k chars), force-split it to avoid AWS 400 errors.
+            if len(doc.page_content) > 4000:
+                sub_docs = md_safety_splitter.split_documents([doc])
+                final_chunks.extend(sub_docs)
+            else:
+                final_chunks.append(doc)
+        else:
+            # It's a PDF page. ALWAYS split it for better retrieval granularity.
+            pdf_chunks = pdf_splitter.split_documents([doc])
+            final_chunks.extend(pdf_chunks)
+        
+    # for i, chunk in enumerate(final_chunks):
+    #     chunk.metadata["id"] = f"{chunk.metadata.get('source')}_{i}"
+    #     chunk.metadata["timestamp"] = time.time()
         # source and page_number are usually carried over from the loader
         
-    return chunks
+    return final_chunks
 
 def generate_embeddings(chunks: list) -> tuple:
     """
@@ -122,32 +178,51 @@ def generate_embeddings(chunks: list) -> tuple:
     model_kwargs={"dimensions": 1024} 
     )
 
-    batch_size = 150
-    embeddings_list = []
-    
-    texts = [chunk.page_content for chunk in chunks]
+    batch_size = 50
+    #embeddings_list = []
     prepared_data = []
+    texts = [chunk.page_content for chunk in chunks]
 
     # loop through the text in chunks, embedding them in batches
     for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
-        batch_embeddings = embeddings_model.embed_documents(batch)
+        batch_texts = texts[i : i + batch_size]
+        batch_chunks = chunks[i : i + batch_size]
+        
+        batch_embeddings = embeddings_model.embed_documents(batch_texts)
 
         # set the metadata for each embedding
         for j, vector in enumerate(batch_embeddings):
+            chunk_text = batch_texts[j]
+            
+            # Inside many markdown files there is a source. Find it and remove any styling from it
+            source_pattern = r"(?:Source|source):\s*[\*_]*([^\*_\n\r]+)[\*_]*"
+            match = re.search(source_pattern, chunk_text)
+            
+            # If found, use it. else default to the subject (like 'diseases')
+            internal_citation = match.group(1).strip() if match else batch_chunks[j].metadata.get('subject', 'General')
             prepared_data.append({
                     'id': str(uuid.uuid4()),
                     'values': vector,
                     'metadata': {
-                        'text': batch[j],
-                        'page': chunks[j].metadata['page'],
-                        'category': chunks[j].metadata['category'],
-                        'date': chunks[j].metadata['creationdate'],
+                        'filename': batch_chunks[j].metadata.get('filename', 'unknown'),
+                        'text': chunk_text,
+                        'cited_source': internal_citation,
+                        'source': batch_chunks[j].metadata.get('source', 'unknown'),
+                        'page': batch_chunks[j].metadata.get('page', 0),
+                        'category': batch_chunks[j].metadata.get('category', 'DnD'),
+                        'subject': batch_chunks[j].metadata.get('subject', 'general'),
+                        'creationdate': batch_chunks[j].metadata.get('creationdate', 'unknown'),
+                        'timestamp': batch_chunks[j].metadata.get('timestamp', 0),
+                        'H1': batch_chunks[j].metadata.get('H1', ''),
+                        'H2': batch_chunks[j].metadata.get('H2', ''),
+                        'H3': batch_chunks[j].metadata.get('H3', ''),
+                        'H4': batch_chunks[j].metadata.get('H4', ''),
+                        'H5': batch_chunks[j].metadata.get('H5', '')
                 }
             })
 
-        embeddings_list.extend(batch_embeddings)
-
+        #embeddings_list.extend(batch_embeddings)
+        print(f"\t- Generated {i + len(batch_texts)} / {len(texts)} embeddings...")
     # return prepared_data dictionary, which has 'values' as the key for embeddings
     return prepared_data
 def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
@@ -183,6 +258,7 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
         name=index_name,
         cloud="aws",
         region=os.getenv('AWS_REGION', 'us-east-1'),
+        # This is another way to use serverless spec for embeddings
         embed={
             "model": "llama-text-embed-v2",
             "field_map": {"text": "text"} # "Look in metadata['text'] for the searchable content"
@@ -196,6 +272,7 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
     index = pinecone.Index(name=index_name)
 
     batch_size = 100
+    print(f"\t- Upserting to namespace: {namespace}...")
     for i in range(0, len(embeddings), batch_size):
         batch = embeddings[i : i + batch_size]
         
@@ -209,10 +286,9 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
             # 2. Create the Document
             # We pass the whole 'item' or just the 'metadata' dict as metadata
             docs.append(Document(page_content=page_content, metadata=metadata_dict))
-        
         # 3. Add the batch to Pinecone via LangChain
         vectorstore.add_documents(docs, namespace=namespace)
-
+        print(f"\t- Upserted {i + len(batch)} / {len(embeddings)} embeddings...")
 
 def main() -> None:
     """Orchestrate the full ingestion pipeline."""
@@ -222,15 +298,12 @@ def main() -> None:
     documents = load_documents(args.input_dir)
     print('documents loaded:', len(documents))
     chunks = chunk_documents(documents)
-    # for doc_chunk in chunks:
-    #     print(f'***{doc_chunk.metadata['page']}***: {doc_chunk.page_content}')
-    #     print()
     print('chunks generated:', len(chunks))
     embeddings = generate_embeddings(chunks)
     print('embeddings generated')
     upsert_to_pinecone(embeddings, args.namespace)
     print('embeddings upserted')
-    print(f"✅ Ingested {len(chunks)} chunks into namespace '{args.namespace}'.")
+    print(f"Ingested {len(chunks)} chunks into namespace '{args.namespace}'.")
 
 
 if __name__ == "__main__":

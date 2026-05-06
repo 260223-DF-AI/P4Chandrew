@@ -114,7 +114,7 @@ def retriever_node(state: ResearchState) -> dict:
     return {
         #"plan": remaining_plan,
         "retrieved_chunks": formatted_chunks,
-        "scratchpad": state.get("scratchpad", []) + [log_entry]
+        "scratchpad": [log_entry]
     }
 
 if __name__ == "__main__":

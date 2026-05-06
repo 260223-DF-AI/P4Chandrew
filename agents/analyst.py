@@ -34,6 +34,11 @@ class AnalysisResult(BaseModel):
 # Agent Node
 # ---------------------------------------------------------------------------
 
+llm = ChatBedrock(
+    model_id=os.getenv('BEDROCK_MODEL_ID'),
+    model_kwargs={'temperature': 0}
+).with_structured_output(AnalysisResult)
+    
 def analyst_node(state: ResearchState) -> dict:
     """
     Synthesize retrieved chunks into a structured research response.
@@ -103,13 +108,9 @@ def analyst_node(state: ResearchState) -> dict:
     
     # Invoke LLM with structured output using the pydantic model
     "TODO: Add Citation Pydantic Model to verify citations are valid."
-    llm = ChatBedrock(
-        model_id=os.getenv('BEDROCK_MODEL_ID'),
-        model_kwargs={'temperature': 0}
-    ).with_structured_output(AnalysisResult)
-    
+
     # Get log for the scratchpad
-    initial_logs = state.get("scratchpad", []) + [f"Analyst: Beginning analysis for: {current_subtask}"]
+    #initial_logs = state.get("scratchpad", []) + [f"Analyst: Beginning analysis for: {current_subtask}"]
     
     try:
         # Attempt the structured call
@@ -138,5 +139,5 @@ def analyst_node(state: ResearchState) -> dict:
         "confidence_score": score,
         "plan": new_plan,
         "retrieved_chunks": [], 
-        "scratchpad": state.get("scratchpad", []) + [log_msg]
+        "scratchpad": [log_msg]
     }

@@ -35,6 +35,6 @@ class ResearchState(TypedDict):
     iteration_count: int
     scratchpad: Annotated[list[str], add]
     user_id: str
-    critique: str
+    critique: dict
     current_subtask_index: int
     needs_hitl: bool
