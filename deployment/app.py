@@ -84,6 +84,7 @@ def lambda_handler(event: dict, context) -> dict:
             "user_id": body.get("user_id", "anonymous")
         }, config=config)
 
+        # format the response
         analysis = result.get("analysis", {}) or {}
         return _response(200, {
             "answer": mask_pii(analysis.get("answer", "")),
