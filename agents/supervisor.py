@@ -171,12 +171,12 @@ def critique_node(state: ResearchState) -> dict:
         }
 
     # Max Iterations reached or critically low score - Escalate
-    new_state = {
+    escalated_state = {
         "scratchpad": current_logs + ["Critique: Max iterations reached or threshold failed. Escalating to HITL."],
         "fact_check_report": {"status": "Escalated"},
         "retrieved_chunks": state.get("retrieved_chunks", [])
     }
-    return interrupt(new_state)
+    return interrupt(escalated_state)
 
 
 

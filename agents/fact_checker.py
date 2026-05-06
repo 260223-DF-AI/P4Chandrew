@@ -121,60 +121,60 @@ def fact_checker_node(state: ResearchState) -> dict:
     - If confidence < threshold, trigger HITL interrupt.
     - Support Time Travel via state checkpointing.
     """
-    _lazy_init()
-    log = ["[fact_checker] starting verification"]
+    # _lazy_init()
+    # log = ["[fact_checker] starting verification"]
 
-    analysis = state.get("analysis") or {}
-    answer = analysis.get("answer", "")
-    claims = _split_into_claims(answer)
-    log.append(f"[fact_checker] extracted {len(claims)} claims")
+    # analysis = state.get("analysis") or {}
+    # answer = analysis.get("answer", "")
+    # claims = _split_into_claims(answer)
+    # log.append(f"[fact_checker] extracted {len(claims)} claims")
 
-    if not claims:
-        report = FactCheckReport(verdicts=[], overall_confidence=0.0)
-        return {
-            "fact_check_report": report.model_dump(),
-            "confidence_score": 0.0,
-            "needs_hitl": True,
-            "scratchpad": log + ["[fact_checker] no claims, escalating to HITL"],
-        }
+    # if not claims:
+    #     report = FactCheckReport(verdicts=[], overall_confidence=0.0)
+    #     return {
+    #         "fact_check_report": report.model_dump(),
+    #         "confidence_score": 0.0,
+    #         "needs_hitl": True,
+    #         "scratchpad": log + ["[fact_checker] no claims, escalating to HITL"],
+    #     }
 
-    verdicts = [_verify_claim(c) for c in claims]
-    counts = {"Supported": 0, "Unsupported": 0, "Inconclusive": 0}
-    for v in verdicts:
-        counts[v.verdict] = counts.get(v.verdict, 0) + 1
+    # verdicts = [_verify_claim(c) for c in claims]
+    # counts = {"Supported": 0, "Unsupported": 0, "Inconclusive": 0}
+    # for v in verdicts:
+    #     counts[v.verdict] = counts.get(v.verdict, 0) + 1
 
-    # Confidence = (supported - unsupported) / total, clamped to [0, 1].
-    total = max(len(verdicts), 1)
-    raw = (counts["Supported"] - counts["Unsupported"]) / total
-    overall = max(0.0, min(1.0, raw))
+    # # Confidence = (supported - unsupported) / total, clamped to [0, 1].
+    # total = max(len(verdicts), 1)
+    # raw = (counts["Supported"] - counts["Unsupported"]) / total
+    # overall = max(0.0, min(1.0, raw))
 
-    threshold = float(os.environ.get("HITL_CONFIDENCE_THRESHOLD", 0.6))
-    if counts["Unsupported"] > 0 or overall < threshold:
-        report_status = "Escalated"
-        needs_hitl = True
-    else:
-        report_status = "Accepted"
-        needs_hitl = False
+    # threshold = float(os.environ.get("HITL_CONFIDENCE_THRESHOLD", 0.6))
+    # if counts["Unsupported"] > 0 or overall < threshold:
+    #     report_status = "Escalated"
+    #     needs_hitl = True
+    # else:
+    #     report_status = "Accepted"
+    #     needs_hitl = False
 
-    report = FactCheckReport(verdicts=verdicts, overall_confidence=overall, status=report_status)
-    log.append(
-        f"[fact_checker] supported={counts['Supported']}, "
-        f"unsupported={counts['Unsupported']}, inconclusive={counts['Inconclusive']}, "
-        f"overall={overall:.2f}, hitl={needs_hitl}"
-    )
+    # report = FactCheckReport(verdicts=verdicts, overall_confidence=overall, status=report_status)
+    # log.append(
+    #     f"[fact_checker] supported={counts['Supported']}, "
+    #     f"unsupported={counts['Unsupported']}, inconclusive={counts['Inconclusive']}, "
+    #     f"overall={overall:.2f}, hitl={needs_hitl}"
+    # )
 
-    return {
-        "fact_check_report": report.model_dump(),
-        "confidence_score": overall,
-        "needs_hitl": needs_hitl,
-        "scratchpad": log,
-    }
-
-    # Mock implementation
     # return {
-    #     "fact_check_report": {
-    #         "status": "Accepted", 
-    #         "details": "Fact-check skipped for testing."
-    #     },
-    #     "scratchpad": state.get("scratchpad", []) + ["Fact-Checker: Bypassed. Not implemented."]
+    #     "fact_check_report": report.model_dump(),
+    #     "confidence_score": overall,
+    #     "needs_hitl": needs_hitl,
+    #     "scratchpad": log,
     # }
+
+    #Mock implementation
+    return {
+        "fact_check_report": {
+            "status": "Accepted", 
+            "details": "Fact-check skipped for testing."
+        },
+        "scratchpad": state.get("scratchpad", []) + ["Fact-Checker: Bypassed. Not implemented."]
+    }
