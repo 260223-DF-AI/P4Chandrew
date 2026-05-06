@@ -22,6 +22,11 @@ echo "Deploying to AWS..."
 sam deploy \
   --guided \
   --stack-name researchflow \
-  --capabilities CAPABILITY_IAM
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides \
+      PineconeApiKey="${PINECONE_API_KEY}" \
+      PineconeIndexName="${PINECONE_INDEX_NAME:-researchflow}" \
+      BedrockModelId="${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-5-20250929-v1:0}" \
+      EmbeddingModelId="${EMBEDDING_MODEL_ID:-amazon.titan-embed-text-v2:0}" \
 
 echo "Deployment complete. Check the Outputs above for your API endpoint."
