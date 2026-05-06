@@ -60,6 +60,8 @@ def analyst_node(state: ResearchState) -> dict:
     
     # Start building the context by getting the chunks from the retriever
     chunks = state.get("retrieved_chunks", [])
+    print(f"DEBUG: First chunk text: {chunks[0].get('content')[:100] if chunks else 'EMPTY'}")
+    print(f"DEBUG: Analyst is seeing {len(chunks)} chunks.")
     if not chunks:
         # If no chunks exist, we tell the LLM so it returns a low confidence result
         context_str = "ATTENTION: No relevant rule chunks were found in the database for this specific task."
@@ -77,7 +79,11 @@ def analyst_node(state: ResearchState) -> dict:
     # Build the system and user prompt
     "TODO: Needs updating.This prompt isn't forcing the LLM to return with all the required keys. (Citations/Confidence)"
     system_prompt = (
-        "You are an expert D&D 5e Rules Analyst. You MUST return a valid JSON object.\n"
+        "You are a 2024 D&D Rules expert. Do not reference 2014 legacy mechanics unless explicitly asked. Use the provided RETRIEVED RULES CONTEXT to answer. "
+        "If the context contains rules, summarize them clearly. "
+        "ONLY if the context is explicitly empty or irrelevant should you say you have no information."
+        "If a claim is functionally correct but uses slightly different terminology (e.g., 'halved speed' vs 'double movement cost'), mark it as Supported."
+        "You MUST return a valid JSON object.\n"
         "CRITICAL: Do NOT omit any fields. If you have no citations, return an empty list [].\n"
         "'excerpt' MUST be a verbatim (word-for-word) quote from the 'TEXT CONTENT' used to answer the question.\n\n"
         "Example of the EXACT required format:\n"
@@ -138,6 +144,6 @@ def analyst_node(state: ResearchState) -> dict:
         "analysis": analysis_data,
         "confidence_score": score,
         "plan": new_plan,
-        "retrieved_chunks": [], 
+        #"retrieved_chunks": [], 
         "scratchpad": [log_msg],
     }

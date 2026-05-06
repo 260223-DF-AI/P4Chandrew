@@ -32,7 +32,7 @@ class FactCheckReport(BaseModel):
 
 _VERDICT_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
-     "You are a strict fact-checker. Given a claim and supporting evidence, "
+     "You are a strict 2024 D&D fact-checker. Given a claim and supporting evidence, "
      "decide between one of the following verdicts: Supported, Unsupported, "
      "Inconclusive.\n"
      "  • Supported = the evidence directly states or strongly implies the claim.\n"
@@ -69,6 +69,9 @@ def _lazy_init():
         _embedder = BedrockEmbeddings(
             model_id=os.environ.get("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"),
             region_name=os.environ["AWS_REGION"],
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+            model_kwargs={"dimensions": 1024},
         )
     if _pinecone_index is None:
         pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
@@ -93,17 +96,19 @@ def _split_into_claims(answer: str) -> list[str]:
 def _verify_claim(claim: str) -> ClaimVerdict:
     query_vec = _embedder.embed_query(claim)
     raw = _pinecone_index.query(
-        vector=query_vec, top_k=3,
+        vector=query_vec, top_k=5,
         namespace="fact-check-sources",
         include_metadata=True,
     )
     matches = raw.get("matches", []) if isinstance(raw, dict) else raw["matches"]
+    
     if not matches:
+        print(f"--- Fact-Checker: No matches in 'fact-check-sources' for claim: {claim[:50]}... ---")
         return ClaimVerdict(claim=claim, verdict="Inconclusive",
                             evidence="No supporting documents found.")
 
-    evidence_block = "\n\n---\n\n".join(
-        m["metadata"].get("content", "") for m in matches
+    evidence_block = "\n\n".join(
+        m["metadata"].get("text", "") for m in matches
     )
     chain = _VERDICT_PROMPT | _verdict_llm.with_structured_output(_SingleVerdict)
     out: _SingleVerdict = chain.invoke({"claim": claim, "evidence": evidence_block})
@@ -146,10 +151,12 @@ def fact_checker_node(state: ResearchState) -> dict:
     # Confidence = (supported - unsupported) / total, clamped to [0, 1].
     total = max(len(verdicts), 1)
     raw = (counts["Supported"] - counts["Unsupported"]) / total
-    overall = max(0.0, min(1.0, raw))
-
+    #overall = max(0.0, min(1.0, raw))
+    overall = counts["Supported"] / total 
     threshold = float(os.environ.get("HITL_CONFIDENCE_THRESHOLD", 0.6))
-    if counts["Unsupported"] > 0 or overall < threshold:
+    
+    # Removed counts["Unsupported"] > 0 or
+    if  overall < threshold:
         report_status = "Escalated"
         needs_hitl = True
     else:
@@ -162,6 +169,11 @@ def fact_checker_node(state: ResearchState) -> dict:
         f"unsupported={counts['Unsupported']}, inconclusive={counts['Inconclusive']}, "
         f"overall={overall:.2f}, hitl={needs_hitl}"
     )
+    
+    for v in verdicts:
+        if v.verdict == "Unsupported":
+            print(f"\nFAILED CLAIM: {v.claim}")
+            print(f"OFFICIAL EVIDENCE: {v.evidence}\n")
 
     return {
         "fact_check_report": report.model_dump(),

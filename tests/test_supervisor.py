@@ -55,7 +55,15 @@ class TestSupervisorRouting:
         - Assert router() returns "retriever".
         """
         from agents.supervisor import router
-        assert router({"plan": ["x"]}) == "retriever"
+    
+        # Task contains 'retrieve', which matches your 'if any(k...)' logic
+        state = {
+            "plan": ["Retrieve the rules for grappling"],
+            "retrieved_chunks": [],
+            "analysis": {}
+        }
+        
+        assert router(state) == "retriever"
 
     # DONE
     def test_router_selects_analyst(self):
@@ -113,18 +121,27 @@ class TestSupervisorRouting:
         - Set confidence above threshold.
         - Assert critique_node routes to END.
         """
-        monkeypatch.setenv("HITL_THRESHOLD", "0.5")
+        # 1. Match your env var name and set the threshold
+        monkeypatch.setenv("HITL_CONFIDENCE_THRESHOLD", "0.5") 
+        
         from agents.supervisor import critique_node
 
-        # Provide a state that meets the "Accepted" threshold
+        # 2. Provide the FULL state required by the node logic
         input_state = {
-            "confidence_score": 0.8,  # Higher than 0.5
-            "current_logs": ["Initial draft"],
-            "retrieved_chunks": ["chunk1"]
+            "confidence_score": 0.8,  # Above 0.5
+            "iteration_count": 1,
+            "scratchpad": ["Finalizing draft..."],
+            "retrieved_chunks": ["chunk1"],
+            # Add any other keys the node might try to .get() or access
         }
 
-        # Call the node
+        # 3. Call the node
         result = critique_node(input_state)
 
-        # Assert the returned dictionary matches your "End" condition
-        assert result["fact_check_report"]["status"] == "Accepted"
+        # 4. Correct Assertions
+        # In your code, it returns: "critique": {"status": "Accepted"}
+        assert "critique" in result
+        assert result["critique"]["status"] == "Accepted"
+        
+        # Check that it updated the scratchpad correctly
+        assert "Critique: Accepted response." in result["scratchpad"][-1]

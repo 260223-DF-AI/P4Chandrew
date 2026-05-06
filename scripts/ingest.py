@@ -252,18 +252,30 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
     index_name = os.getenv('PINECONE_INDEX_NAME')
     
     # If index doesn't exist, create it
-    # Make sure the embedding model is set up to allow text search in Pinecone dashboard
+    # Make sure the embedding model is set up to allow text search in Pinecone dashboard (embed with llama-text-embed-v2)
+#     if not pinecone.has_index(index_name):
+#         pinecone.create_index_for_model(
+#         name=index_name,
+#         cloud="aws",
+#         region=os.getenv('AWS_REGION', 'us-east-1'),
+#         # This is another way to use serverless spec for embeddings
+#         embed={
+#             "model": "llama-text-embed-v2",
+#             "field_map": {"text": "text"} # "Look in metadata['text'] for the searchable content"
+#         }
+# )
+
+    # Use for Hybrid search
     if not pinecone.has_index(index_name):
-        pinecone.create_index_for_model(
-        name=index_name,
-        cloud="aws",
-        region=os.getenv('AWS_REGION', 'us-east-1'),
-        # This is another way to use serverless spec for embeddings
-        embed={
-            "model": "llama-text-embed-v2",
-            "field_map": {"text": "text"} # "Look in metadata['text'] for the searchable content"
-        }
-)
+        pinecone.create_index(
+            name=index_name,
+            dimension=1024,
+            metric="dotproduct", # Required for Hybrid search
+            spec=ServerlessSpec(
+                cloud="aws",
+                region=os.getenv('AWS_REGION', 'us-east-1')
+            )
+        )
     # Initialize the vectorstore
     vectorstore = PineconeVectorStore(index_name=os.getenv("PINECONE_INDEX_NAME"), 
                                       embedding=embeddings_model,

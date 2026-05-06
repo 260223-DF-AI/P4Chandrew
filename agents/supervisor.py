@@ -172,8 +172,8 @@ def critique_node(state: ResearchState) -> dict:
     """
     
     # Evaluate response and decide: accept, retry, or escalate
-    MAX_ITERATIONS = float(os.getenv("MAX_REFINEMENT_ITERATIONS", 3))
-    HITL_THRESHOLD = float(os.getenv("HITL_CONFIDENCE_THRESHOLD", 0.7))
+    MAX_ITERATIONS = int(os.getenv("MAX_REFINEMENT_ITERATIONS", 3))
+    HITL_THRESHOLD = float(os.getenv("HITL_CONFIDENCE_THRESHOLD", 0.6))
     
     score = state.get("confidence_score", 0.0)
     iterations = state.get("iteration_count", 0)

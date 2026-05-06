@@ -79,40 +79,40 @@ class TestAnalystAgent:
         - Assert the AnalysisResult contains at least one Citation.
         - Assert citation source matches a retrieved chunk source.
         """
-        # 1. Setup mock result correctly
-        # We define the data first so we can use it in model_dump and citations
-        citations_data = [{"source": "PHB", "page_number": 190, "excerpt": "verbatim text"}]
+        from agents.analyst import AnalysisResult, Citation, analyst_node
         
-        mock_res = MagicMock(spec=AnalysisResult)
-        mock_res.citations = citations_data
-        mock_res.confidence = 1.0
-        # Ensure model_dump returns a dictionary with the data
-        mock_res.model_dump.return_value = {
-            "answer": "...", 
-            "citations": citations_data,
-            "confidence": 1.0
-        }
+        # 1. Create a real Pydantic object to simulate the structured LLM output
+        mock_citation = Citation(source="PHB", page_number=190, excerpt="verbatim text")
+        mock_res = AnalysisResult(
+            answer="You can grapple by...",
+            citations=[mock_citation],
+            confidence=1.0
+        )
 
-        # 2. Fix the patches to include the required return values
-        with patch("agents.analyst.llm") as mock_llm, \
-            patch("middleware.pii_masking.mask_pii", return_value=("safe prompt", 0)), \
-            patch("middleware.guardrails.sanitize_input", return_value="safe prompt"):
+        # 2. Patch the module-level 'llm' object
+        with patch("agents.analyst.llm") as mock_structured_llm, \
+             patch("middleware.pii_masking.mask_pii", return_value=("safe prompt", 0)), \
+             patch("middleware.guardrails.sanitize_input", return_value="safe prompt"):
             
-            mock_llm.invoke.return_value = mock_res
+            # Since 'llm' is already the structured output runner, just mock invoke
+            mock_structured_llm.invoke.return_value = mock_res
 
-            # 3. Minimal state
+            # 3. Setup state
             state = {
-                "retrieved_chunks": [{"source": "PHB"}], 
-                "plan": ["task"], 
-                "question": "How do I grapple?"
+                "question": "How do I grapple?",
+                "plan": ["Analyze grappling"],
+                "retrieved_chunks": [{"source": "PHB", "content": "Rule text", "page_number": 190}],
+                "scratchpad": []
             }
-            
+
             result = analyst_node(state)
 
-            # 4. Simple Assertions
+            # 4. Assertions
             analysis = result["analysis"]
             assert len(analysis["citations"]) > 0
+            # Fix: Access the index [0] before the key "source"
             assert analysis["citations"][0]["source"] == state["retrieved_chunks"][0]["source"]
+            assert result["confidence_score"] == 1.0
 
 
     def test_confidence_within_range(self):
