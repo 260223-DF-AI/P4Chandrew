@@ -49,7 +49,7 @@ def planner_node(state: ResearchState) -> dict:
         if not analysis:
             # If no analysis has been made, this is our first time in the planning loop
             mode_msg = "Initial Planning"
-            prompt = f"""You are a D&D 5e assistant. Decompose this question into a simple list of research tasks.
+            prompt = f"""You are a D&D assistant. Decompose this question into a simple list of research tasks.
                     Each task must start with one of these keywords: 'Retrieve', 'Analyze', or 'Fact-check'.
                     Question: {state['question']}
                     Return each task on a new line."""
@@ -63,7 +63,10 @@ def planner_node(state: ResearchState) -> dict:
                         Original Question: {state['question']}
                         Remaining Tasks: {current_plan}
                         Recent Activity: {state.get('scratchpad', [])[-2:]}
-                        Provide an updated list of tasks."""
+                        You are a D&D assistant. Decompose the original questions into an updated list of tasks. 
+                        Return each task on a new line, without additonal formatting. 
+                        Do not add any numbers for listing the tasks, bullet points, hyphens, quotes, nor asterisks.
+                        """
 
         # Clean the user prompt and LLM response
         cleaned_prompt, prompt_redactions = pii_masking.mask_pii(prompt)
@@ -106,30 +109,55 @@ def router(state: ResearchState) -> str:
     analysis = state.get("analysis")
     fact_checked = state.get("fact_check_report")
     
-    # If there's a task, decide based on whether we have data yet
-    if plan:
-        current_task = plan[0].lower()
-        #is_retrieval_task = any(k in current_task for k in ["find", "search", "retrieve", "lookup"])
-        
-        # If it's a retrieval task and we don't have results yet, go get them
-        if not chunks:
-            return "retriever"
-        
-        # Otherwise, the Analyst handles the task (and pops it when done)
-        return "analyst"
+    # if analysis and not fact_checked:
+    #     return "fact_checker"
 
-    # Plan is empty - Check for finalization steps
-    if analysis:
-        # If we have an answer but haven't fact-checked yet, go there
-        if not fact_checked:
+    # # If there's a task, decide based on whether we have data yet
+    # if plan:
+    #     current_task = plan[0].lower()
+    #     #is_retrieval_task = any(k in current_task for k in ["find", "search", "retrieve", "lookup"])
+        
+    #     # If it's a retrieval task and we don't have results yet, go get them
+    #     if not chunks:
+    #         return "retriever"
+        
+    #     # Otherwise, the Analyst handles the task (and pops it when done)
+    #     return "analyst"
+
+    # # Plan is empty - Check for finalization steps
+    # if analysis:
+    #     # If we have an answer but haven't fact-checked yet, go there
+    #     if not fact_checked:
+    #         return "fact_checker"
+        
+    #     # Both analysis and fact-check are done, go to critique to finish
+    #     return "critique"
+
+    # # Default fallback if somehow we have no plan and no analysis
+    # return "planner"
+
+    plan = state.get("plan", [])
+    
+    # 1. Check for finished plan first!
+    if not plan:
+        # Once tasks are done, check if we need to fact-check the final result
+        if state.get("analysis") and not state.get("fact_check_report"):
             return "fact_checker"
+        return "critique" # Final node
+
+    # 2. Map current task to a node
+    current_task = plan[0].lower()
+    
+    if any(k.lower() in current_task for k in ["find", "search", "retrieve"]):
+        return "retriever"
+    
+    if any(k.lower() in current_task for k in ["analyze", "summarize", "write"]):
+        return "analyst"
+    
+    if any(k.lower() in current_task for k in ["fact-check", "verify", "check"]):
+        return "fact_checker"
         
-        # Both analysis and fact-check are done, go to critique to finish
-        return "critique"
-
-    # Default fallback if somehow we have no plan and no analysis
-    return "planner"
-
+    return "analyst" # Default fallback
 
 def critique_node(state: ResearchState) -> dict:
     """
@@ -284,18 +312,23 @@ if __name__ == "__main__":
             if "analysis" in output:
                 print(f"Analysis Answer: {output['analysis'].get('answer')[:500]}...")
             
-            if "fact_checker_report" in output:
+            if "fact_check_report" in output:
                 print(f"Fact Check Status: {output['fact_check_report'].get('status')}")
 
-            if node_name == "fact_checker":
-                report = output.get("fact_check_report", {})
-                print(f"Fact Check Status: {report.get('status')}")
+            if "critique" in output:
+                print(f"Critique Status: {output['critique'].get('status')}")
+
+
 
             if node_name == "critique":
                 report = output.get("critique", {})
                 print(f"Status: {report.get('status')}")
-                # Ensure your critique node writes to the scratchpad so you see it here
-                # for log in output.get("scratchpad", []):
-                #     print(f"Log: {log}")
+            # Ensure your critique node writes to the scratchpad so you see it here
+            
+            if "scratchpad" in output:
+                scratchpad = output.get("scratchpad")
+                if scratchpad:
+                    for log in scratchpad:
+                        print(f"Log: {log}")
 
-    print("\n=== FLOW COMPcLETE ===")
+    print("\n=== FLOW COMPLETE ===")
