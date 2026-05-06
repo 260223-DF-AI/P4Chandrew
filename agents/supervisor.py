@@ -17,6 +17,7 @@ from agents.analyst import analyst_node
 from agents.fact_checker import fact_checker_node
 from middleware import pii_masking
 from middleware import guardrails
+from langgraph.types import interrupt
 import os
 
 load_dotenv()
@@ -108,10 +109,10 @@ def router(state: ResearchState) -> str:
     # If there's a task, decide based on whether we have data yet
     if plan:
         current_task = plan[0].lower()
-        is_retrieval_task = any(k in current_task for k in ["find", "search", "retrieve", "lookup"])
+        #is_retrieval_task = any(k in current_task for k in ["find", "search", "retrieve", "lookup"])
         
         # If it's a retrieval task and we don't have results yet, go get them
-        if not chunks and is_retrieval_task:
+        if not chunks:
             return "retriever"
         
         # Otherwise, the Analyst handles the task (and pops it when done)
@@ -151,11 +152,13 @@ def critique_node(state: ResearchState) -> dict:
     current_logs = state.get("scratchpad", [])
 
     #TODO: Make sure the Critique node writes to the newly added critique field in state, instead of scratchpad
+    #TODO: Check if adding retrieves chunks to state is necessary for testing, if not remove
     # High Confidence - Finish
     if score >= HITL_THRESHOLD:
         return {
             "scratchpad": current_logs + ["Critique: Accepted response."],
-            "fact_check_report": {"status": "Accepted"}
+            "fact_check_report": {"status": "Accepted"},
+            "retrieved_chunks": state.get("retrieved_chunks", [])
         }
     
     # Low Confidence but we have retries left - Loop back
@@ -163,14 +166,18 @@ def critique_node(state: ResearchState) -> dict:
         return {
             "iteration_count": iterations + 1, # Explicitly increment state
             "scratchpad": current_logs + [f"Critique: Score {score} too low. Retrying ({iterations + 1}/{MAX_ITERATIONS})."],
-            "fact_check_report": {"status": "Retrying"}
+            "fact_check_report": {"status": "Retrying"},
+            "retrieved_chunks": state.get("retrieved_chunks", [])
         }
 
     # Max Iterations reached or critically low score - Escalate
-    return {
+    new_state = {
         "scratchpad": current_logs + ["Critique: Max iterations reached or threshold failed. Escalating to HITL."],
-        "fact_check_report": {"status": "Escalated"}
+        "fact_check_report": {"status": "Escalated"},
+        "retrieved_chunks": state.get("retrieved_chunks", [])
     }
+    return interrupt(new_state)
+
 
 
 def build_supervisor_graph() -> CompiledStateGraph:

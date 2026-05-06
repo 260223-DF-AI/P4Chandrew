@@ -59,7 +59,9 @@ def load_documents(input_dir: str) -> list:
     headers_to_split_on = [
         ("#", "H1"),   # Captures whatever follows # as metadata['H1']
         ("##", "H2"),  # Captures whatever follows ## as metadata['H2']
-        ("###", "H3")  # Captures whatever follows ### as metadata['H3']
+        ("###", "H3"),  # Captures whatever follows ### as metadata['H3']
+        ("####", "H4"),  # Captures whatever follows #### as metadata['H4']
+        ("#####", "H5")  # Captures whatever follows ##### as metadata['H5']
     ]
     
     # Iterate over files in the input directory
@@ -86,7 +88,8 @@ def load_documents(input_dir: str) -> list:
                         'subject': rel_dir if rel_dir != "." else "general",
                         'category': 'DnD_Research',
                         'source': file_path,
-                        'creationdate': creation_date
+                        'creationdate': creation_date,
+                        'timestamp': str(datetime.fromtimestamp(time.time()))
                     })
                 documents.extend(md_chunks)
                 
@@ -101,7 +104,8 @@ def load_documents(input_dir: str) -> list:
                         'category': 'DnD_Official_Rules',
                         'subject': 'Official',
                         'source': file_path,
-                        'creationdate': creation_date
+                        'creationdate': creation_date,
+                        'timestamp': str(datetime.fromtimestamp(time.time()))
                         
                     })
                 documents.extend(pages)
@@ -150,9 +154,9 @@ def chunk_documents(documents: list) -> list:
             pdf_chunks = pdf_splitter.split_documents([doc])
             final_chunks.extend(pdf_chunks)
         
-    for i, chunk in enumerate(final_chunks):
-        chunk.metadata["id"] = f"{chunk.metadata.get('source')}_{i}"
-        chunk.metadata["timestamp"] = time.time()
+    # for i, chunk in enumerate(final_chunks):
+    #     chunk.metadata["id"] = f"{chunk.metadata.get('source')}_{i}"
+    #     chunk.metadata["timestamp"] = time.time()
         # source and page_number are usually carried over from the loader
         
     return final_chunks
@@ -188,20 +192,32 @@ def generate_embeddings(chunks: list) -> tuple:
 
         # set the metadata for each embedding
         for j, vector in enumerate(batch_embeddings):
+            chunk_text = batch_texts[j]
+            
+            # Inside many markdown files there is a source. Find it and remove any styling from it
+            source_pattern = r"(?:Source|source):\s*[\*_]*([^\*_\n\r]+)[\*_]*"
+            match = re.search(source_pattern, chunk_text)
+            
+            # If found, use it. else default to the subject (like 'diseases')
+            internal_citation = match.group(1).strip() if match else batch_chunks[j].metadata.get('subject', 'General')
             prepared_data.append({
                     'id': str(uuid.uuid4()),
                     'values': vector,
                     'metadata': {
                         'filename': batch_chunks[j].metadata.get('filename', 'unknown'),
-                        'text': batch_texts[j],
+                        'text': chunk_text,
+                        'cited_source': internal_citation,
                         'source': batch_chunks[j].metadata.get('source', 'unknown'),
                         'page': batch_chunks[j].metadata.get('page', 0),
                         'category': batch_chunks[j].metadata.get('category', 'DnD'),
                         'subject': batch_chunks[j].metadata.get('subject', 'general'),
-                        'date': batch_chunks[j].metadata.get('creationdate', 'unknown'),
+                        'creationdate': batch_chunks[j].metadata.get('creationdate', 'unknown'),
+                        'timestamp': batch_chunks[j].metadata.get('timestamp', 0),
                         'H1': batch_chunks[j].metadata.get('H1', ''),
                         'H2': batch_chunks[j].metadata.get('H2', ''),
-                        'H3': batch_chunks[j].metadata.get('H3', '')
+                        'H3': batch_chunks[j].metadata.get('H3', ''),
+                        'H4': batch_chunks[j].metadata.get('H4', ''),
+                        'H5': batch_chunks[j].metadata.get('H5', '')
                 }
             })
 
@@ -270,10 +286,9 @@ def upsert_to_pinecone(embeddings: list, namespace: str) -> None:
             # 2. Create the Document
             # We pass the whole 'item' or just the 'metadata' dict as metadata
             docs.append(Document(page_content=page_content, metadata=metadata_dict))
-            print(f"\t -Document appended" )
         # 3. Add the batch to Pinecone via LangChain
         vectorstore.add_documents(docs, namespace=namespace)
-
+        print(f"\t- Upserted {i + len(batch)} / {len(embeddings)} embeddings...")
 
 def main() -> None:
     """Orchestrate the full ingestion pipeline."""
@@ -283,15 +298,12 @@ def main() -> None:
     documents = load_documents(args.input_dir)
     print('documents loaded:', len(documents))
     chunks = chunk_documents(documents)
-    # for doc_chunk in chunks:
-    #     print(f'***{doc_chunk.metadata['page']}***: {doc_chunk.page_content}')
-    #     print()
     print('chunks generated:', len(chunks))
     embeddings = generate_embeddings(chunks)
     print('embeddings generated')
     upsert_to_pinecone(embeddings, args.namespace)
     print('embeddings upserted')
-    print(f"✅ Ingested {len(chunks)} chunks into namespace '{args.namespace}'.")
+    print(f"Ingested {len(chunks)} chunks into namespace '{args.namespace}'.")
 
 
 if __name__ == "__main__":
