@@ -49,7 +49,7 @@ def planner_node(state: ResearchState) -> dict:
         if not analysis:
             # If no analysis has been made, this is our first time in the planning loop
             mode_msg = "Initial Planning"
-            prompt = f"""You are a D&D 5e assistant. Decompose this question into a simple list of research tasks.
+            prompt = f"""You are a D&D assistant. Decompose this question into a simple list of research tasks.
                     Each task must start with one of these keywords: 'Retrieve', 'Analyze', or 'Fact-check'.
                     Question: {state['question']}
                     Return each task on a new line."""
@@ -63,7 +63,10 @@ def planner_node(state: ResearchState) -> dict:
                         Original Question: {state['question']}
                         Remaining Tasks: {current_plan}
                         Recent Activity: {state.get('scratchpad', [])[-2:]}
-                        Provide an updated list of tasks."""
+                        You are a D&D assistant. Decompose the original questions into an updated list of tasks. 
+                        Return each task on a new line, without additonal formatting. 
+                        Do not add any numbers for listing the tasks, bullet points, hyphens, quotes, nor asterisks.
+                        """
 
         # Clean the user prompt and LLM response
         cleaned_prompt, prompt_redactions = pii_masking.mask_pii(prompt)
@@ -106,30 +109,55 @@ def router(state: ResearchState) -> str:
     analysis = state.get("analysis")
     fact_checked = state.get("fact_check_report")
     
-    # If there's a task, decide based on whether we have data yet
-    if plan:
-        current_task = plan[0].lower()
-        #is_retrieval_task = any(k in current_task for k in ["find", "search", "retrieve", "lookup"])
-        
-        # If it's a retrieval task and we don't have results yet, go get them
-        if not chunks:
-            return "retriever"
-        
-        # Otherwise, the Analyst handles the task (and pops it when done)
-        return "analyst"
+    # if analysis and not fact_checked:
+    #     return "fact_checker"
 
-    # Plan is empty - Check for finalization steps
-    if analysis:
-        # If we have an answer but haven't fact-checked yet, go there
-        if not fact_checked:
+    # # If there's a task, decide based on whether we have data yet
+    # if plan:
+    #     current_task = plan[0].lower()
+    #     #is_retrieval_task = any(k in current_task for k in ["find", "search", "retrieve", "lookup"])
+        
+    #     # If it's a retrieval task and we don't have results yet, go get them
+    #     if not chunks:
+    #         return "retriever"
+        
+    #     # Otherwise, the Analyst handles the task (and pops it when done)
+    #     return "analyst"
+
+    # # Plan is empty - Check for finalization steps
+    # if analysis:
+    #     # If we have an answer but haven't fact-checked yet, go there
+    #     if not fact_checked:
+    #         return "fact_checker"
+        
+    #     # Both analysis and fact-check are done, go to critique to finish
+    #     return "critique"
+
+    # # Default fallback if somehow we have no plan and no analysis
+    # return "planner"
+
+    plan = state.get("plan", [])
+    
+    # 1. Check for finished plan first!
+    if not plan:
+        # Once tasks are done, check if we need to fact-check the final result
+        if state.get("analysis") and not state.get("fact_check_report"):
             return "fact_checker"
+        return "critique" # Final node
+
+    # 2. Map current task to a node
+    current_task = plan[0].lower()
+    
+    if any(k.lower() in current_task for k in ["find", "search", "retrieve"]):
+        return "retriever"
+    
+    if any(k.lower() in current_task for k in ["analyze", "summarize", "write"]):
+        return "analyst"
+    
+    if any(k.lower() in current_task for k in ["fact-check", "verify", "check"]):
+        return "fact_checker"
         
-        # Both analysis and fact-check are done, go to critique to finish
-        return "critique"
-
-    # Default fallback if somehow we have no plan and no analysis
-    return "planner"
-
+    return "analyst" # Default fallback
 
 def critique_node(state: ResearchState) -> dict:
     """
@@ -144,8 +172,8 @@ def critique_node(state: ResearchState) -> dict:
     """
     
     # Evaluate response and decide: accept, retry, or escalate
-    MAX_ITERATIONS = float(os.getenv("MAX_REFINEMENT_ITERATIONS", 3))
-    HITL_THRESHOLD = float(os.getenv("HITL_CONFIDENCE_THRESHOLD", 0.7))
+    MAX_ITERATIONS = int(os.getenv("MAX_REFINEMENT_ITERATIONS", 3))
+    HITL_THRESHOLD = float(os.getenv("HITL_CONFIDENCE_THRESHOLD", 0.6))
     
     score = state.get("confidence_score", 0.0)
     iterations = state.get("iteration_count", 0)
@@ -157,7 +185,7 @@ def critique_node(state: ResearchState) -> dict:
     if score >= HITL_THRESHOLD:
         return {
             "scratchpad": current_logs + ["Critique: Accepted response."],
-            "fact_check_report": {"status": "Accepted"},
+            "critique": {"status": "Accepted"},
             "retrieved_chunks": state.get("retrieved_chunks", [])
         }
     
@@ -166,14 +194,14 @@ def critique_node(state: ResearchState) -> dict:
         return {
             "iteration_count": iterations + 1, # Explicitly increment state
             "scratchpad": current_logs + [f"Critique: Score {score} too low. Retrying ({iterations + 1}/{MAX_ITERATIONS})."],
-            "fact_check_report": {"status": "Retrying"},
+            "critique": {"status": "Retrying"},
             "retrieved_chunks": state.get("retrieved_chunks", [])
         }
 
     # Max Iterations reached or critically low score - Escalate
     escalated_state = {
         "scratchpad": current_logs + ["Critique: Max iterations reached or threshold failed. Escalating to HITL."],
-        "fact_check_report": {"status": "Escalated"},
+        "critique": {"status": "Escalated"},
         "retrieved_chunks": state.get("retrieved_chunks", [])
     }
     return interrupt(escalated_state)
@@ -240,7 +268,7 @@ def build_supervisor_graph() -> CompiledStateGraph:
     # Final routing from critique
     builder.add_conditional_edges(
         "critique",
-        lambda state: END if state["fact_check_report"].get("status") in ["Accepted", "Escalated"] else "planner"
+        lambda state: END if state["critique"].get("status") in ["Accepted", "Escalated"] else "planner"
     )
 
     return builder.compile()
@@ -264,9 +292,11 @@ if __name__ == "__main__":
     }
 
     print("\n=== STARTING RESEARCH FLOW ===")
-    
+    # Program is crashing due to recursion limit. Change from 25 to 50
+    config={"recursion_limit": 50} 
+
     # Stream the events so you can see the nodes working in real-time
-    for event in app.stream(inputs, stream_mode="updates"):
+    for event in app.stream(inputs, stream_mode="updates", config=config):
         for node_name, output in event.items():
             print(f"\n--- Output from Node: {node_name} ---")
             
@@ -275,18 +305,30 @@ if __name__ == "__main__":
                 print(f"Current Plan: {output['plan']}")
             
             # Print the number of chunks retrieved
-            if "retrieved_chunks" in output:
+            if "retrieved_chunks" in output and node_name == "retriever":
                 print(f"Retrieved {len(output['retrieved_chunks'])} chunks.")
 
             # Print the synthesis if the Analyst finished
             if "analysis" in output:
                 print(f"Analysis Answer: {output['analysis'].get('answer')[:500]}...")
-                
+            
+            if "fact_check_report" in output:
+                print(f"Fact Check Status: {output['fact_check_report'].get('status')}")
+
+            if "critique" in output:
+                print(f"Critique Status: {output['critique'].get('status')}")
+
+
+
             if node_name == "critique":
-                report = output.get("fact_check_report", {})
+                report = output.get("critique", {})
                 print(f"Status: {report.get('status')}")
-                # Ensure your critique node writes to the scratchpad so you see it here
-                for log in output.get("scratchpad", []):
-                    print(f"Log: {log}")
+            # Ensure your critique node writes to the scratchpad so you see it here
+            
+            if "scratchpad" in output:
+                scratchpad = output.get("scratchpad")
+                if scratchpad:
+                    for log in scratchpad:
+                        print(f"Log: {log}")
 
     print("\n=== FLOW COMPLETE ===")

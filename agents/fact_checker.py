@@ -32,7 +32,7 @@ class FactCheckReport(BaseModel):
 
 _VERDICT_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
-     "You are a strict fact-checker. Given a claim and supporting evidence, "
+     "You are a strict 2024 D&D fact-checker. Given a claim and supporting evidence, "
      "decide between one of the following verdicts: Supported, Unsupported, "
      "Inconclusive.\n"
      "  • Supported = the evidence directly states or strongly implies the claim.\n"
@@ -69,6 +69,9 @@ def _lazy_init():
         _embedder = BedrockEmbeddings(
             model_id=os.environ.get("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"),
             region_name=os.environ["AWS_REGION"],
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+            model_kwargs={"dimensions": 1024},
         )
     if _pinecone_index is None:
         pc = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
@@ -76,8 +79,8 @@ def _lazy_init():
     if _verdict_llm is None:
         _verdict_llm = ChatBedrock(
             model_id=os.environ.get(
-                "FACT_CHECK_MODEL_ID",
-                "anthropic.claude-3-haiku-20240307-v1:0",
+                "BEDROCK_MODEL_ID",
+                "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
             ),
             region_name=os.environ["AWS_REGION"],
             model_kwargs={"max_tokens": 256, "temperature": 0.0},
@@ -93,17 +96,19 @@ def _split_into_claims(answer: str) -> list[str]:
 def _verify_claim(claim: str) -> ClaimVerdict:
     query_vec = _embedder.embed_query(claim)
     raw = _pinecone_index.query(
-        vector=query_vec, top_k=3,
+        vector=query_vec, top_k=5,
         namespace="fact-check-sources",
         include_metadata=True,
     )
     matches = raw.get("matches", []) if isinstance(raw, dict) else raw["matches"]
+    
     if not matches:
+        print(f"--- Fact-Checker: No matches in 'fact-check-sources' for claim: {claim[:50]}... ---")
         return ClaimVerdict(claim=claim, verdict="Inconclusive",
                             evidence="No supporting documents found.")
 
-    evidence_block = "\n\n---\n\n".join(
-        m["metadata"].get("content", "") for m in matches
+    evidence_block = "\n\n".join(
+        m["metadata"].get("text", "") for m in matches
     )
     chain = _VERDICT_PROMPT | _verdict_llm.with_structured_output(_SingleVerdict)
     out: _SingleVerdict = chain.invoke({"claim": claim, "evidence": evidence_block})
@@ -121,60 +126,67 @@ def fact_checker_node(state: ResearchState) -> dict:
     - If confidence < threshold, trigger HITL interrupt.
     - Support Time Travel via state checkpointing.
     """
-    # _lazy_init()
-    # log = ["[fact_checker] starting verification"]
+    _lazy_init()
+    log = ["Fact Checker: starting verification"]
 
-    # analysis = state.get("analysis") or {}
-    # answer = analysis.get("answer", "")
-    # claims = _split_into_claims(answer)
-    # log.append(f"[fact_checker] extracted {len(claims)} claims")
+    analysis = state.get("analysis") or {}
+    answer = analysis.get("answer", "")
+    claims = _split_into_claims(answer)
+    log.append(f"Fact Checker: extracted {len(claims)} claims")
 
-    # if not claims:
-    #     report = FactCheckReport(verdicts=[], overall_confidence=0.0)
-    #     return {
-    #         "fact_check_report": report.model_dump(),
-    #         "confidence_score": 0.0,
-    #         "needs_hitl": True,
-    #         "scratchpad": log + ["[fact_checker] no claims, escalating to HITL"],
-    #     }
+    if not claims:
+        report = FactCheckReport(verdicts=[], overall_confidence=0.0)
+        return {
+            "fact_check_report": report.model_dump(),
+            "confidence_score": 0.0,
+            "needs_hitl": True,
+            "scratchpad": log + ["Fact Checker: no claims, escalating to HITL"],
+        }
 
-    # verdicts = [_verify_claim(c) for c in claims]
-    # counts = {"Supported": 0, "Unsupported": 0, "Inconclusive": 0}
-    # for v in verdicts:
-    #     counts[v.verdict] = counts.get(v.verdict, 0) + 1
+    verdicts = [_verify_claim(c) for c in claims]
+    counts = {"Supported": 0, "Unsupported": 0, "Inconclusive": 0}
+    for v in verdicts:
+        counts[v.verdict] = counts.get(v.verdict, 0) + 1
 
-    # # Confidence = (supported - unsupported) / total, clamped to [0, 1].
-    # total = max(len(verdicts), 1)
-    # raw = (counts["Supported"] - counts["Unsupported"]) / total
-    # overall = max(0.0, min(1.0, raw))
+    # Confidence = (supported - unsupported) / total, clamped to [0, 1].
+    total = max(len(verdicts), 1)
+    raw = (counts["Supported"] - counts["Unsupported"]) / total
+    #overall = max(0.0, min(1.0, raw))
+    overall = counts["Supported"] / total 
+    threshold = float(os.environ.get("HITL_CONFIDENCE_THRESHOLD", 0.6))
+    
+    # Removed counts["Unsupported"] > 0 or
+    if  overall < threshold:
+        report_status = "Escalated"
+        needs_hitl = True
+    else:
+        report_status = "Accepted"
+        needs_hitl = False
 
-    # threshold = float(os.environ.get("HITL_CONFIDENCE_THRESHOLD", 0.6))
-    # if counts["Unsupported"] > 0 or overall < threshold:
-    #     report_status = "Escalated"
-    #     needs_hitl = True
-    # else:
-    #     report_status = "Accepted"
-    #     needs_hitl = False
+    report = FactCheckReport(verdicts=verdicts, overall_confidence=overall, status=report_status)
+    log.append(
+        f"Fact Checker: supported={counts['Supported']}, "
+        f"unsupported={counts['Unsupported']}, inconclusive={counts['Inconclusive']}, "
+        f"overall={overall:.2f}, hitl={needs_hitl}"
+    )
+    
+    for v in verdicts:
+        if v.verdict == "Unsupported":
+            print(f"\nFAILED CLAIM: {v.claim}")
+            print(f"OFFICIAL EVIDENCE: {v.evidence}\n")
 
-    # report = FactCheckReport(verdicts=verdicts, overall_confidence=overall, status=report_status)
-    # log.append(
-    #     f"[fact_checker] supported={counts['Supported']}, "
-    #     f"unsupported={counts['Unsupported']}, inconclusive={counts['Inconclusive']}, "
-    #     f"overall={overall:.2f}, hitl={needs_hitl}"
-    # )
-
-    # return {
-    #     "fact_check_report": report.model_dump(),
-    #     "confidence_score": overall,
-    #     "needs_hitl": needs_hitl,
-    #     "scratchpad": log,
-    # }
+    return {
+        "fact_check_report": report.model_dump(),
+        "confidence_score": overall,
+        "needs_hitl": needs_hitl,
+        "scratchpad": log,
+    }
 
     #Mock implementation
-    return {
-        "fact_check_report": {
-            "status": "Accepted", 
-            "details": "Fact-check skipped for testing."
-        },
-        "scratchpad": state.get("scratchpad", []) + ["Fact-Checker: Bypassed. Not implemented."]
-    }
+    # return {
+    #     "fact_check_report": {
+    #         "status": "Accepted", 
+    #         "details": "Fact-check skipped for testing."
+    #     },
+    #     "scratchpad": state.get("scratchpad", []) + ["Fact-Checker: Bypassed. Not implemented."]
+    # }
