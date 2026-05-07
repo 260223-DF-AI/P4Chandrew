@@ -47,6 +47,8 @@ model_kwargs={"dimensions": 1024}
 )
 
 encoder = BM25Encoder().default()
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+pinecone_index_instance = pc.Index(os.getenv("PINECONE_INDEX_NAME"))
 
 #embeddings_filter = EmbeddingsFilter(embeddings=embeddings_model, similarity_threshold=0.01)
 vectorstore = PineconeVectorStore(index_name=os.getenv("PINECONE_INDEX_NAME"), 
@@ -58,10 +60,11 @@ vectorstore = PineconeVectorStore(index_name=os.getenv("PINECONE_INDEX_NAME"),
 base_retriever = PineconeHybridSearchRetriever(
     embeddings=embeddings_model, 
     sparse_encoder=encoder,
-    index=os.getenv("PINECONE_INDEX_NAME"), # The raw Pinecone Index object
+    index=pinecone_index_instance, # The raw Pinecone Index object
     top_k=20,
-    alpha=0.7, # 0.7 focuses on keywords, 0.3 on semantic
-    text_key="text"
+    alpha=0.6, # 0.7 focuses on keywords, 0.3 on semantic
+    text_key="text",
+    namespace="primary-corpus"
 )
 
 # Use Cohere to rerank
@@ -97,6 +100,7 @@ def retriever_node(state: ResearchState) -> dict:
     else:
         target_ns = "primary-corpus"
         
+    base_retriever.namespace = target_ns
     current_subtask = current_subtask.replace("Retrieve", "").replace("Analyze", "").replace("Fact-check", "").strip()
     print(f"\n---Query: {current_subtask}---\n")
     
@@ -121,7 +125,7 @@ def retriever_node(state: ResearchState) -> dict:
                                         config={"configurable": {
                                             "search_kwargs": {
                                                 "filter": search_filter, 
-                                                "namespace": target_ns
+                                                #"namespace": target_ns
                                                 }
                                             }
                                         })

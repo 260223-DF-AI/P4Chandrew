@@ -60,8 +60,8 @@ def analyst_node(state: ResearchState) -> dict:
     
     # Start building the context by getting the chunks from the retriever
     chunks = state.get("retrieved_chunks", [])
-    print(f"DEBUG: First chunk text: {chunks[0].get('content')[:100] if chunks else 'EMPTY'}")
-    print(f"DEBUG: Analyst is seeing {len(chunks)} chunks.")
+    # print(f"DEBUG: First chunk text: {chunks[0].get('content')[:100] if chunks else 'EMPTY'}")
+    # print(f"DEBUG: Analyst is seeing {len(chunks)} chunks.")
     if not chunks:
         # If no chunks exist, we tell the LLM so it returns a low confidence result
         context_str = "ATTENTION: No relevant rule chunks were found in the database for this specific task."

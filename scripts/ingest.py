@@ -9,11 +9,6 @@ Usage:
     python scripts/ingest.py --input-dir ./data/fact-check-sources --namespace fact-check-sources
 """
 
-import argparse
-import os
-import uuid
-import time
-import re
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -23,6 +18,12 @@ from langchain_aws import BedrockEmbeddings
 from pinecone import Pinecone, ServerlessSpec
 from dotenv import load_dotenv
 from datetime import datetime
+import argparse
+import os
+import uuid
+import time
+import re
+
 
 
 def parse_args() -> argparse.Namespace:
