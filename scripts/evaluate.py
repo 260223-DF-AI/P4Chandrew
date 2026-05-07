@@ -102,7 +102,7 @@ def run_ragas_evaluation(predictions: list[dict], golden: list[dict]) -> dict:
         model_kwargs={"max_tokens": 4096, "temperature": 0}
     )
     bedrock_embeddings = BedrockEmbeddings(
-        model_id= "amazon.titan-embed-text-v2:0", #os.getenv("BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"),
+        model_id=os.getenv("BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"),
         region_name=os.getenv("AWS_REGION", "us-east-1"),
         model_kwargs={"dimensions": 1024}
     )
