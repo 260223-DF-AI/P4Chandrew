@@ -5,10 +5,10 @@ Builds and returns the main LangGraph StateGraph that orchestrates
 the Planner, Retriever, Analyst, Fact-Checker, and Critique nodes.
 
 Usage:
-    python agents/supervisor.py --query "Your question here"
+    python -m agents.supervisor --query "Your question here"
     
 example:
-    python agents/supervisor.py --query "How does the Grappled condition affect movement?"
+    python -m agents.supervisor --query "How does the Grappled condition affect movement?"
 """
 
 from langchain_aws import ChatBedrock

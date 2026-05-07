@@ -68,7 +68,7 @@ base_retriever = PineconeHybridSearchRetriever(
 )
 
 # Use Cohere to rerank
-compressor = CohereRerank(model="rerank-english-v3.0", top_n=20)
+compressor = CohereRerank(model="rerank-english-v3.0", top_n=8)
 compression_retriever = ContextualCompressionRetriever(
 base_compressor=compressor, 
 base_retriever=base_retriever

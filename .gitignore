@@ -1,6 +1,9 @@
 data/
 .env
+.venv_test_2
 .venv_test
 .venv/
 __pychache__/
 *pycache*
+Dockerfile
+.dockerignore

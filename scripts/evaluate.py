@@ -15,8 +15,9 @@ from ragas.run_config import RunConfig
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from datasets import Dataset
 from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy, context_precision
+from ragas.metrics import faithfulness, answer_relevancy, context_precision, AnswerRelevancy
 from agents.supervisor import build_supervisor_graph
+
 from dotenv import load_dotenv
 import argparse
 import json
@@ -88,34 +89,41 @@ def run_ragas_evaluation(predictions: list[dict], golden: list[dict]) -> dict:
     - Evaluate with metrics: faithfulness, answer_relevancy, context_precision.
     - Return a dict of metric_name → score.
     """
+    import pandas as pd
     
+    df = pd.DataFrame(predictions)
+    ds = Dataset.from_pandas(df)
+    
+    if "ground_truth" in ds.column_names:
+        ds = ds.rename_column("ground_truth", "reference")
     bedrock_chat = ChatBedrock(
         model_id=os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"),
-        region_name=os.getenv("AWS_REGION", "us-east-1") 
+        region_name=os.getenv("AWS_REGION", "us-east-1") ,
+        model_kwargs={"max_tokens": 4096, "temperature": 0}
     )
     bedrock_embeddings = BedrockEmbeddings(
         model_id=os.getenv("BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"),
         region_name=os.getenv("AWS_REGION", "us-east-1"),
-        model_kwargs={"max_tokens": 9000, "temperature": 0.0}
+        model_kwargs={"dimensions": 1024}
     )
     # Reduce max_workers since it is throttling on the default
     run_config = RunConfig(max_workers=2, timeout=60) 
     # Wrap LLM models for Ragas
     ragas_llm = LangchainLLMWrapper(bedrock_chat)
     ragas_embeddings = LangchainEmbeddingsWrapper(bedrock_embeddings)
-    
-    ds = Dataset.from_list(predictions)
-
+    answer_relevancy_simple = AnswerRelevancy(strictness=1)
+    #ds = Dataset.from_list(predictions)
     result = evaluate(
         ds,
-        metrics=[faithfulness, answer_relevancy, context_precision],
+        metrics=[faithfulness, answer_relevancy_simple, context_precision],
         llm=ragas_llm,
         embeddings=ragas_embeddings,
-        run_config=run_config,
+        run_config=run_config
     )
-    
+    df = result.to_pandas()
+    averages = df.mean(numeric_only=True).to_dict()
     #TODO: result.scores.items() not working, as well as results._scores_dict.items()
-    return {k: float(v) for k, v in result.scores.items()}
+    return {k: float(v) for k, v in averages.items()}
 
 
 def main() -> None:
