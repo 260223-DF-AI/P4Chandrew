@@ -61,14 +61,14 @@ base_retriever = PineconeHybridSearchRetriever(
     embeddings=embeddings_model, 
     sparse_encoder=encoder,
     index=pinecone_index_instance, # The raw Pinecone Index object
-    top_k=20,
-    alpha=0.6, # 0.7 focuses on keywords, 0.3 on semantic
+    top_k=50,
+    alpha=0.7, # 0.7 focuses on keywords, 0.3 on semantic
     text_key="text",
     namespace="primary-corpus"
 )
 
 # Use Cohere to rerank
-compressor = CohereRerank(model="rerank-english-v3.0", top_n=10)
+compressor = CohereRerank(model="rerank-english-v3.0", top_n=20)
 compression_retriever = ContextualCompressionRetriever(
 base_compressor=compressor, 
 base_retriever=base_retriever
