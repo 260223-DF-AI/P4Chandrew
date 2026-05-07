@@ -31,18 +31,24 @@ class FactCheckReport(BaseModel):
     status: str = Field(default="Pending", pattern=r"^(Pending|Accepted|Escalated)$")
 
 _VERDICT_PROMPT = ChatPromptTemplate.from_messages([
-    ("system",
-     "You are a strict 2024 D&D fact-checker. Given a claim and supporting evidence, "
-     "decide between one of the following verdicts: Supported, Unsupported, "
-     "Inconclusive.\n"
-     "  • Supported = the evidence directly states or strongly implies the claim.\n"
-     "  • Unsupported = the evidence contradicts the claim.\n"
-     "  • Inconclusive = the evidence is silent on the claim.\n"
-     "Quote a short snippet from the evidence as your justification.\n\n"
-     "Output schema: return JSON with 'verdict' (one of the three labels above, "
-     "exactly as spelled) and 'evidence' (a short string snippet from the input)."),
-    ("human",
-     "Claim: {claim}\n\nEvidence:\n{evidence}"),
+    ("system", (
+        "You are a strict 2024 D&D Fact-Checker. Your goal is to verify claims against the provided evidence.\n\n"
+        "CORE LOGIC - SPECIFIC BEATS GENERAL:\n"
+        "1. If a claim describes a general 2024 rule (e.g., speed is 0), but the evidence describes "
+        "a specific exception (e.g., a feat or monster trait that ignores that rule), "
+        "you MUST mark the claim as 'Supported'. Note the exception in the evidence snippet.\n"
+        "2. Only mark 'Unsupported' if the claim directly contradicts the core mechanics provided "
+        "in the official evidence.\n\n"
+        "VERDICT DEFINITIONS:\n"
+        " • Supported: The evidence confirms the core mechanic of the claim.\n"
+        " • Unsupported: The evidence explicitly contradicts the claim.\n"
+        " • Inconclusive: The evidence does not mention the claim's topic at all.\n\n"
+        "OUTPUT INSTRUCTIONS:\n"
+        "Return a JSON object matching the requested schema. The 'verdict' MUST be exactly one of: "
+        "Supported, Unsupported, or Inconclusive. The 'evidence' field must be a short, verbatim "
+        "snippet from the provided text justifying your choice."
+    )),
+    ("human", "Claim: {claim}\n\nEvidence:\n{evidence}"),
 ])
 
 
