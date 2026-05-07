@@ -3,6 +3,12 @@ ResearchFlow — Supervisor Graph
 
 Builds and returns the main LangGraph StateGraph that orchestrates
 the Planner, Retriever, Analyst, Fact-Checker, and Critique nodes.
+
+Usage:
+    python agents/supervisor.py --query "Your question here"
+    
+example:
+    python agents/supervisor.py --query "How does the Grappled condition affect movement?"
 """
 
 from langchain_aws import ChatBedrock
@@ -19,6 +25,7 @@ from middleware import pii_masking
 from middleware import guardrails
 from langgraph.types import interrupt
 import os
+import argparse
 
 load_dotenv()
     
@@ -272,15 +279,28 @@ def build_supervisor_graph() -> CompiledStateGraph:
     )
 
     return builder.compile()
+
+def parse_args() -> argparse.Namespace:
+    """Parse ingestion CLI arguments."""
+    parser = argparse.ArgumentParser(description="Query to pass into ResearchFlow.")
+    parser.add_argument(
+        "--query",
+        type=str,
+        required=True,
+        help="the query that the supervisor will process",
+    )
+    return parser.parse_args()
  
 if __name__ == "__main__":
     # Compile the graph
     app = build_supervisor_graph()
 
+    args = parse_args()
+    query = args.query if args.query else "How does the Grappled condition affect movement?"
     # Setup a realistic D&D query
     # "How does the 'Grappled' condition affect movement?" is a great test case
     inputs = {
-        "question": "How does the Grappled condition affect movement?",
+        "question": query,
         "plan": [],
         "retrieved_chunks": [],
         "analysis": {},
