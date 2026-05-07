@@ -6,18 +6,21 @@ faithfulness, answer relevancy, and context precision.
 
 Usage:
     python scripts/evaluate.py --golden-dataset ./data/golden_dataset.json
+    python -m scripts.evaluate --golden-dataset ./data/golden_dataset.json
 """
 
-import argparse
-import json
-
+from langchain_aws import ChatBedrock, BedrockEmbeddings
+from ragas.llms import LangchainLLMWrapper
+from ragas.run_config import RunConfig
+from ragas.embeddings import LangchainEmbeddingsWrapper
 from datasets import Dataset
 from ragas import evaluate
 from ragas.metrics import faithfulness, answer_relevancy, context_precision
-
 from agents.supervisor import build_supervisor_graph
-
 from dotenv import load_dotenv
+import argparse
+import json
+import os
 
 
 def parse_args() -> argparse.Namespace:
@@ -85,13 +88,34 @@ def run_ragas_evaluation(predictions: list[dict], golden: list[dict]) -> dict:
     - Evaluate with metrics: faithfulness, answer_relevancy, context_precision.
     - Return a dict of metric_name → score.
     """
+    
+    bedrock_chat = ChatBedrock(
+        model_id=os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"),
+        region_name=os.getenv("AWS_REGION", "us-east-1") 
+    )
+    bedrock_embeddings = BedrockEmbeddings(
+        model_id=os.getenv("BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"),
+        region_name=os.getenv("AWS_REGION", "us-east-1"),
+        model_kwargs={"max_tokens": 9000, "temperature": 0.0}
+    )
+    # Reduce max_workers since it is throttling on the default
+    run_config = RunConfig(max_workers=2, timeout=60) 
+    # Wrap LLM models for Ragas
+    ragas_llm = LangchainLLMWrapper(bedrock_chat)
+    ragas_embeddings = LangchainEmbeddingsWrapper(bedrock_embeddings)
+    
     ds = Dataset.from_list(predictions)
+
     result = evaluate(
         ds,
         metrics=[faithfulness, answer_relevancy, context_precision],
+        llm=ragas_llm,
+        embeddings=ragas_embeddings,
+        run_config=run_config,
     )
     
-    return {k: float(v) for k, v in result._scores_dict.items()}
+    #TODO: result.scores.items() not working, as well as results._scores_dict.items()
+    return {k: float(v) for k, v in result.scores.items()}
 
 
 def main() -> None:

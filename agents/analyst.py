@@ -5,7 +5,7 @@ Synthesizes retrieved context into a structured, cited research
 response using AWS Bedrock, with Pydantic-validated output.
 """
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, Field
 from langchain_aws import ChatBedrock
 from langchain_core.messages import HumanMessage, SystemMessage
 from agents.state import ResearchState
@@ -26,8 +26,8 @@ class Citation(BaseModel):
 class AnalysisResult(BaseModel):
     """Pydantic model enforcing structured analyst output."""
     answer: str
-    citations: list[Citation]
-    confidence: float  # 0.0 – 1.0
+    citations: list[Citation] = Field(default_factory=list)
+    confidence: float = Field(default=0.0)# 0.0 – 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ def analyst_node(state: ResearchState) -> dict:
         "  ],\n"
         '  "confidence": 1.0\n'
         "}\n\n"
-        "If no data is found, use this structure:\n"
+        "If no data is found, use this EXACT structure:\n"
         "{\n"
         '  "answer": "No information found.",\n'
         '  "citations": [],\n'
