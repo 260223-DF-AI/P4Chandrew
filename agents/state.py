@@ -9,7 +9,7 @@ from typing import Annotated, TypedDict
 from operator import add
 
 
-class ResearchState(TypedDict):
+class ResearchState(TypedDict, total=False):
     """
     Shared state for the Supervisor graph.
 

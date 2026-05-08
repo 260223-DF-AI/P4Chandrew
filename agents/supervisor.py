@@ -16,6 +16,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
+from langgraph.errors import GraphInterrupt
 from dotenv import load_dotenv
 from agents.state import ResearchState
 from agents.retriever import retriever_node
@@ -24,9 +25,11 @@ from agents.fact_checker import fact_checker_node
 from middleware import pii_masking
 from middleware import guardrails
 from langgraph.types import interrupt
+from middleware.guardrails import detect_injection, sanitize_input
+from middleware.pii_masking import mask_pii
 import os
 import argparse
-
+import uuid
 load_dotenv()
     
 llm = ChatBedrock(
@@ -289,10 +292,15 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="the query that the supervisor will process",
     )
+    
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable step-wise scratchpad logging."
+    )
     return parser.parse_args()
- 
-if __name__ == "__main__":
-    # Compile the graph
+def run_supervisor():
+     # Compile the graph
     app = build_supervisor_graph()
 
     args = parse_args()
@@ -350,5 +358,73 @@ if __name__ == "__main__":
                 if scratchpad:
                     for log in scratchpad:
                         print(f"Log: {log}")
+                        
+def main():
+    
+    print("\n=== STARTING RESEARCH FLOW ===")
+    load_dotenv()
+    args = parse_args()
 
+    # --- 1) input boundary ---------------------------------------------------
+    if detect_injection(args.query):
+        print("Input rejected: possible prompt injection.")
+        return
+    question = mask_pii(sanitize_input(args.query))
+
+    # --- 2) graph + addressable thread --------------------------------------
+    graph = build_supervisor_graph()
+    thread_id = f"cli-{uuid.uuid4()}"
+    config = {"configurable": {"thread_id": thread_id}}
+
+    initial_state = {
+        "question": question,
+        "user_id": "local_dev_123",
+    }
+
+    # --- 3) invoke, handling HITL interrupts --------------------------------
+    try:
+        result = graph.invoke(initial_state, config=config)
+    except GraphInterrupt as interrupt:
+        # NodeInterrupt percolates up wrapped in GraphInterrupt.
+        print("\n=== HUMAN-IN-THE-LOOP REVIEW REQUIRED ===")
+        print(f"Reason: {interrupt}")
+        # Show the reviewer the current state so they can decide.
+        snapshot = graph.get_state(config)
+        analysis = snapshot.values.get("analysis", {})
+        print("\nDraft answer:\n", analysis.get("answer", "<empty>"))
+        decision = input("\nApprove answer as-is? [y/n]: ").strip().lower()
+        if decision != "y":
+            print("Rejected by reviewer. Aborting.")
+            return
+        # Override the state to mark approved, then resume.
+        graph.update_state(config, {"needs_hitl": False, "confidence_score": 1.0})
+        result = graph.invoke(None, config=config)
+
+    # --- 4) output boundary --------------------------------------------------
+    analysis = result.get("analysis", {})
+    safe_answer = mask_pii(analysis.get("answer", ""))
+
+    print("\n" + "=" * 60)
+    print("ANSWER")
+    print("=" * 60)
+    print(safe_answer)
+    print("\nCITATIONS")
+    for c in analysis.get("citations", []):
+        page = f", p.{c['page_number']}" if c.get("page_number") else ""
+        print(f"  • {c['source']}{page}: {c.get('excerpt','')[:120]}...")
+    print(f"\nCONFIDENCE: {result.get('confidence_score', 0.0):.2f}")
+    print(f"ITERATIONS: {result.get('iteration_count', 0)}")
+
+    if args.verbose:
+        print("\nSCRATCHPAD")
+        for line in result.get("scratchpad", []):
+            print(" ", line)
+
+    if result.get("fact_check_report"):
+        print("\nFACT-CHECK REPORT")
+        for v in result["fact_check_report"]["verdicts"]:
+            print(f"  [{v['verdict']}] {v['claim'][:80]}...")
     print("\n=== FLOW COMPLETE ===")
+    
+if __name__ == "__main__":
+    main()
