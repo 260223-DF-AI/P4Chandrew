@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: "ResearchFlow \u2014 Adaptive Multi-Agent Research Assistant"
+Globals:
+  Function:
+    Timeout: 120
+    MemorySize: 2048
+Parameters:
+  PineconeApiKey:
+    Type: String
+    NoEcho: true
+  PineconeIndexName:
+    Type: String
+    Default: researchflow
+  BedrockModelId:
+    Type: String
+    Default: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+  EmbeddingModelId:
+    Type: String
+    Default: amazon.titan-embed-text-v2:0
+  HitlConfidenceThreshold:
+    Type: String
+    Default: '0.6'
+  MaxRefinementIterations:
+    Type: String
+    Default: '3'
+Resources:
+  ResearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      Description: Handles /research POST requests
+      Environment:
+        Variables:
+          PINECONE_API_KEY:
+            Ref: PineconeApiKey
+          PINECONE_INDEX_NAME:
+            Ref: PineconeIndexName
+          BEDROCK_MODEL_ID:
+            Ref: BedrockModelId
+          EMBEDDING_MODEL_ID:
+            Ref: EmbeddingModelId
+          HITL_CONFIDENCE_THRESHOLD:
+            Ref: HitlConfidenceThreshold
+          MAX_REFINEMENT_ITERATIONS:
+            Ref: MaxRefinementIterations
+          AWS_REGION:
+            Ref: AWS::Region
+      Policies:
+      - Statement:
+        - Effect: Allow
+          Action:
+          - bedrock:InvokeModel
+          - bedrock:InvokeModelWithResponseStream
+          Resource: '*'
+      Events:
+        ResearchApi:
+          Type: Api
+          Properties:
+            Path: /research
+            Method: post
+      ImageUri: researchfunction:v1
+    Metadata:
+      DockerContext: C:\Users\alecl\OneDrive\Documents\Revature\P4\P4Chandrew
+      DockerTag: v1
+      Dockerfile: deployment/Dockerfile
+      SamResourceId: ResearchFunction
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL for /research
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/research

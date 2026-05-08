@@ -1,5 +1,6 @@
 data/
 .env
+.venv_aws
 .venv_test_2
 .venv_test
 .venv/
