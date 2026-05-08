@@ -13,7 +13,7 @@ from langchain_aws import BedrockEmbeddings, ChatBedrock
 from langchain_core.prompts import ChatPromptTemplate
 from pinecone import Pinecone
 from pydantic import BaseModel, Field
-
+from typing import Optional
 from agents.state import ResearchState
 
 
@@ -37,7 +37,8 @@ _VERDICT_PROMPT = ChatPromptTemplate.from_messages([
         "1. If a claim describes a general 2024 rule (e.g., speed is 0), but the evidence describes "
         "a specific exception (e.g., a feat or monster trait that ignores that rule), "
         "you MUST mark the claim as 'Supported'. Note the exception in the evidence snippet.\n"
-        "2. Only mark 'Unsupported' if the claim directly contradicts the core mechanics provided "
+        "2. If the provided context contains the definition or description of the subject, consider the claim supported."
+        "3. Only mark 'Unsupported' if the claim directly contradicts the core mechanics provided "
         "in the official evidence.\n\n"
         "VERDICT DEFINITIONS:\n"
         " • Supported: The evidence confirms the core mechanic of the claim.\n"
@@ -58,7 +59,8 @@ class _SingleVerdict(BaseModel):
         pattern=r"^(Supported|Unsupported|Inconclusive)$",
         description="Exactly one of: Supported, Unsupported, Inconclusive",
     )
-    evidence: str = Field(
+    evidence: Optional[str] = Field(
+        default="", 
         description="A short quoted snippet from the evidence justifying the verdict",
     )
 
