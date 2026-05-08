@@ -11,12 +11,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: ResearchFlow — Adaptive Multi-Agent Research Assistant
 
-Globals:
-  Function:
-    Timeout: 120
-    MemorySize: 2048
-    # Runtime is set by the image, not here, when using PackageType: Image.
-
 Parameters:
   PineconeApiKey:
     Type: String
@@ -36,13 +30,21 @@ Parameters:
   MaxRefinementIterations:
     Type: String
     Default: "3"
+  CohereApiKey:
+    Type: String
+    NoEcho: true
 
 Resources:
   ResearchFunction:
     Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
-      Description: Handles /research POST requests
+      MemorySize: 2048
+      Timeout: 300
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins: ["*"]
       Environment:
         Variables:
           PINECONE_API_KEY: !Ref PineconeApiKey
@@ -51,7 +53,11 @@ Resources:
           EMBEDDING_MODEL_ID: !Ref EmbeddingModelId
           HITL_CONFIDENCE_THRESHOLD: !Ref HitlConfidenceThreshold
           MAX_REFINEMENT_ITERATIONS: !Ref MaxRefinementIterations
-          AWS_REGION: !Ref AWS::Region
+          COHERE_API_KEY: !Ref CohereApiKey 
+          # Critical fixes for Read-only file system
+          HF_HOME: /tmp
+          NLTK_DATA: /tmp
+          XDG_CACHE_HOME: /tmp
       Policies:
         - Statement:
             - Effect: Allow
@@ -59,18 +65,12 @@ Resources:
                 - bedrock:InvokeModel
                 - bedrock:InvokeModelWithResponseStream
               Resource: "*"
-      Events:
-        ResearchApi:
-          Type: Api
-          Properties:
-            Path: /research
-            Method: post
     Metadata:
       Dockerfile: deployment/Dockerfile
       DockerContext: ..
       DockerTag: v1
 
 Outputs:
-  ApiEndpoint:
-    Description: "API Gateway endpoint URL for /research"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/research"
+  FunctionUrl:
+    Description: "Direct Lambda URL (Bypasses 29s timeout)"
+    Value: !GetAtt ResearchFunctionUrl.FunctionUrl

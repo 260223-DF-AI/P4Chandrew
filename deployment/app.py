@@ -5,10 +5,16 @@ Entry point for the serverless deployment behind API Gateway.
 Receives a POST /research request and invokes the Supervisor graph.
 """
 
+from langgraph.errors import GraphRecursionError
 import json
 import logging
 import os
 import uuid
+import os
+import nltk
+# Tell NLTK to use the /tmp folder
+nltk.data.path.append("/tmp")
+os.environ["NLTK_DATA"] = "/tmp"
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -87,6 +93,13 @@ def lambda_handler(event: dict, context) -> dict:
             "iterations": result.get("iteration_count", 0),
         })
 
+    except GraphRecursionError as e:
+        print("Graph looped! Returning fallback response.")
+        return _response(200, {
+            "answer": "The research agent is having trouble verifying the details. Please try again later.",
+            "status": "partial_success"
+        })
+        
     except Exception as e:
         logger.exception("research failed")
         return _response(500, {"error": str(e)})

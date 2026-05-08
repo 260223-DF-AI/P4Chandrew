@@ -16,29 +16,35 @@
 set -euo pipefail
 
 if [ -f .env ]; then
-  echo "Loading variables from .env..."
-  # Export variables while ignoring comments and empty lines
-  export $(grep -v '^#' .env | xargs)
-else
-  echo "No .env file found. Proceeding with existing environment variables..."
+  echo "Loading .env..."
+  while IFS='=' read -r key value; do
+    # Remove Windows carriage returns and whitespace
+    clean_key=$(echo "$key" | tr -d '\r' | xargs)
+    clean_value=$(echo "$value" | tr -d '\r' | xargs)
+    
+    # Skip empty lines or comments
+    [[ -z "$clean_key" || "$clean_key" == \#* ]] && continue
+    
+    export "$clean_key"="$clean_value"
+  done < .env
 fi
-
-: "${PINECONE_API_KEY:?PINECONE_API_KEY env var must be set}"
 
 echo "Building SAM application (Docker image)..."
 sam build --template-file template.yaml
 
 echo "Deploying to AWS..."
 sam deploy \
-  --guided \
   --stack-name researchflow \
   --capabilities CAPABILITY_IAM \
+  --resolve-image-repos \
+  --resolve-s3 \
   --parameter-overrides \
     PineconeApiKey="${PINECONE_API_KEY}" \
-    PineconeIndexName="${PINECONE_INDEX_NAME:-researchflow}" \
-    BedrockModelId="${BEDROCK_MODEL_ID:-anthropic.claude-3-haiku-20240307-v1:0}" \
-    EmbeddingModelId="${EMBEDDING_MODEL_ID:-amazon.titan-embed-text-v2:0}" \
-    HitlConfidenceThreshold="${HITL_CONFIDENCE_THRESHOLD:-0.8}" \
-    MaxRefinementIterations="${MAX_REFINEMENT_ITERATIONS:-3}"
+    PineconeIndexName="researchflow" \
+    CohereApiKey="${COHERE_API_KEY}" \
+    BedrockModelId="${BEDROCK_MODEL_ID}" \
+    EmbeddingModelId="${BEDROCK_EMBEDDING_MODEL_ID}" \
+    HitlConfidenceThreshold="${HITL_CONFIDENCE_THRESHOLD}" \
+    MaxRefinementIterations="${MAX_REFINEMENT_ITERATIONS}"
 
-echo "Deployment complete. Check the Outputs above for your API endpoint."
+echo "Deployment complete. Use the FunctionUrl from the output for your curl command."

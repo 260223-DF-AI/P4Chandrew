@@ -13,6 +13,7 @@ example:
 
 from langchain_aws import ChatBedrock
 from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
@@ -30,7 +31,14 @@ from middleware.pii_masking import mask_pii
 import os
 import argparse
 import uuid
+from memory.store import (
+    get_user_preferences,
+    get_query_history,
+    append_query,
+)
+
 load_dotenv()
+
     
 llm = ChatBedrock(
         model_id=os.getenv('BEDROCK_MODEL_ID'),
@@ -46,8 +54,11 @@ def planner_node(state: ResearchState) -> dict:
     - Return a list of sub-tasks (Plan-and-Execute pattern).
     - Write to the scratchpad for observability.
     """
+    user_id = state.get("user_id", "default")
     current_plan = state.get("plan", [])
     analysis = state.get("analysis")
+    history = get_query_history(user_id, limit=3)
+    append_query(user_id, state["question"])
     
     if analysis and not current_plan and state.get("iteration_count", 0) == 0:
         return {
@@ -104,7 +115,6 @@ def planner_node(state: ResearchState) -> dict:
     # If there is a plan and analysis, return current plan and keep going
     return {"plan": state.get("plan", []), "scratchpad": ["Planner: Proceeding..."]}
 
-
 def router(state: ResearchState) -> str:
     """
     Conditional edge: decide which agent to invoke next.
@@ -119,33 +129,6 @@ def router(state: ResearchState) -> str:
     analysis = state.get("analysis")
     fact_checked = state.get("fact_check_report")
     
-    # if analysis and not fact_checked:
-    #     return "fact_checker"
-
-    # # If there's a task, decide based on whether we have data yet
-    # if plan:
-    #     current_task = plan[0].lower()
-    #     #is_retrieval_task = any(k in current_task for k in ["find", "search", "retrieve", "lookup"])
-        
-    #     # If it's a retrieval task and we don't have results yet, go get them
-    #     if not chunks:
-    #         return "retriever"
-        
-    #     # Otherwise, the Analyst handles the task (and pops it when done)
-    #     return "analyst"
-
-    # # Plan is empty - Check for finalization steps
-    # if analysis:
-    #     # If we have an answer but haven't fact-checked yet, go there
-    #     if not fact_checked:
-    #         return "fact_checker"
-        
-    #     # Both analysis and fact-check are done, go to critique to finish
-    #     return "critique"
-
-    # # Default fallback if somehow we have no plan and no analysis
-    # return "planner"
-
     plan = state.get("plan", [])
     
     # 1. Check for finished plan first!
@@ -281,7 +264,7 @@ def build_supervisor_graph() -> CompiledStateGraph:
         lambda state: END if state["critique"].get("status") in ["Accepted", "Escalated"] else "planner"
     )
 
-    return builder.compile()
+    return builder.compile(checkpointer=MemorySaver())
 
 def parse_args() -> argparse.Namespace:
     """Parse ingestion CLI arguments."""
@@ -297,6 +280,14 @@ def parse_args() -> argparse.Namespace:
         "--verbose",
         action="store_true",
         help="Enable step-wise scratchpad logging."
+    )
+    
+    parser.add_argument(
+        "--user-id",
+        type=str,
+        default="local_dev_123",
+        required=False,
+        help="User ID for cross-thread memory (Store interface)."
     )
     return parser.parse_args()
 def run_supervisor():
@@ -321,7 +312,7 @@ def run_supervisor():
 
     print("\n=== STARTING RESEARCH FLOW ===")
     # Program is crashing due to recursion limit. Change from 25 to 50
-    config={"recursion_limit": 50} 
+    config={"recursion_limit": 30} 
 
     # Stream the events so you can see the nodes working in real-time
     for event in app.stream(inputs, stream_mode="updates", config=config):
@@ -374,11 +365,14 @@ def main():
     # --- 2) graph + addressable thread --------------------------------------
     graph = build_supervisor_graph()
     thread_id = f"cli-{uuid.uuid4()}"
-    config = {"configurable": {"thread_id": thread_id}}
-
+    config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 30}
+    user_id = args.user_id
+    if not user_id:
+        user_id = "local_dev_123"
+        
     initial_state = {
         "question": question,
-        "user_id": "local_dev_123",
+        "user_id": user_id,
     }
 
     # --- 3) invoke, handling HITL interrupts --------------------------------
@@ -423,7 +417,7 @@ def main():
     if result.get("fact_check_report"):
         print("\nFACT-CHECK REPORT")
         for v in result["fact_check_report"]["verdicts"]:
-            print(f"  [{v['verdict']}] {v['claim'][:80]}...")
+            print(f"  [{v['verdict']}] {v['claim'][:120]}...")
     print("\n=== FLOW COMPLETE ===")
     
 if __name__ == "__main__":
